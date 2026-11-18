@@ -135,7 +135,7 @@ jobs:
           engine: custom-nsis
           running-exe: App\Ardia\Ardia.exe
           timeout-seconds: '900'
-          package-revision: b1r4
+          package-revision: b1r5
       - name: Verify real installer PE and action-reported SHA-256
         shell: pwsh
         env:
@@ -155,7 +155,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r4)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r5)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -168,7 +168,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r4)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r5)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'

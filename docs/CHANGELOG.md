@@ -1,3 +1,12 @@
+# b1r5 — Git blob integrity vs Windows checkout line endings, 2026-11-19
+
+- Inspect user-provided b1r4 GitHub Actions log `logs_120033292406.zip`: 22 tests and same-tag setup preflight passed; source check failed at Step 7 because worktree SHA-256 differed from immutable preflight manifest SHA-256.
+- Replace platform-dependent `Get-FileHash` manifest comparison with an immutable binary Git blob (`git show HEAD:path`) SHA-256 verification; additionally verify preflight Git object ID and source-derived engine fields.
+- Permit only CRLF/LF differences between checked-out copies and pinned Git blobs; reject other worktree modifications, unexpected engine identity, and missing/corrupt files.
+- Record pnpm lockfile Git blob SHA-256 independent of Windows line endings.
+- Add nine offline test fixtures for genuine checkout versus tampering; preserve six launcher flags, data handling, exact-tag fallback, and pinned action versions.
+- This is a verified local builder fix, not a Windows CI or browser portability success claim.
+
 # b1r4 — verified same-source-tag setup engine fallback, 2026-11-18
 
 - Inspect actual b1r3 CI log: 18 tests passed; preflight stopped on three unavailable upstream engine releases (404).
@@ -8,7 +17,7 @@
 - Preserve b1r2 experimental launcher flags and Data path behavior, shared NSIS Package Builder v1.0.0 and Release Publisher v1.1.1.
 - Add mock tests for safe setup selection and provenance. Windows build/portability remain unverified until real Actions run and manual checks.
 
-# b1r4 — early engine preflight and safe nightly fallback, 2026-11-18
+# b1r3 — early engine preflight and safe nightly fallback, 2026-11-18
 
 - Inspect each candidate Windows release's immutable source-commit `scripts/windows/engine/prebuilt.json`.
 - Verify the exact matching `windows-engine-*` GitHub release and x64 archive asset metadata **before** dependency installation and Windows source compilation.

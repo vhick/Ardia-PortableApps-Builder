@@ -1,13 +1,17 @@
 {
-  "revision": "b1r4",
-  "source_log": "logs_120006987741.zip",
-  "ci_log_findings": "18 b1r3 tests passed; preflight failed with three engine release HTTP 404 responses",
-  "python_unit_tests": 22,
+  "revision": "b1r5",
+  "source_log": "logs_120033292406.zip",
+  "ci_log_findings": "b1r4: 22 Python tests passed, selected nightly.5 official_setup fallback, exact commit checked out; Step 7 worktree manifest SHA-256 mismatch prevented further stages",
+  "failure_step": "Verify source SHA and lockfile identity",
+  "cause": "Likely Windows Git LF/CRLF conversion; not conclusively proven from log alone",
+  "fix": "Cross-check binary Git blob SHA-256 and Git blob ID; permit line-ending-only worktree differences; fail on any other modification",
+  "python_unit_tests": 31,
   "local_python_result": "PASS",
-  "windows_source_build_b1r4": "NOT YET VERIFIED",
-  "windows_extraction_and_assembly_b1r4": "NOT YET VERIFIED",
+  "local_cpp_argument_tests": "PASS (g++ compiled on Linux, not MSVC)",
+  "windows_source_build_b1r5": "NOT YET VERIFIED",
+  "windows_extraction_and_assembly_b1r5": "NOT YET VERIFIED",
   "portableapps_runtime": "NOT YET VERIFIED",
   "installer": "NOT YET VERIFIED",
   "publisher": "NOT YET VERIFIED",
-  "note": "Offline local static evidence only. Windows acceptance is mandatory."
+  "note": "Local fixtures and static checks only. A real Windows Actions run plus manual acceptance are mandatory."
 }
