@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Optional exact upstream tag. Blank selects the latest buildable Windows x64 release with a public matching engine'
+        description: 'Optional exact upstream tag. Blank selects latest official Windows x64 tag with matched engine or verified same-tag setup'
         type: string
         default: ''
       channel:
@@ -57,6 +57,16 @@ jobs:
       - name: Verify source SHA and lockfile identity
         shell: pwsh
         run: ./scripts/verify-upstream.ps1 -Identity work/identity.json
+      - name: Download and SHA256-verify official SAME-TAG Windows setup BEFORE compilation
+        if: ${{ steps.upstream.outputs.engine_source == 'official_setup' }}
+        shell: pwsh
+        run: ./scripts/download-official-setup.ps1 -Identity work/identity.json -Out "$env:RUNNER_TEMP/ardia-official-setup"
+      - name: Fetch SHA256-pinned upstream Chromium engine BEFORE compilation
+        if: ${{ steps.upstream.outputs.engine_source == 'prebuilt_engine' }}
+        shell: pwsh
+        run: |
+          & ./upstream/scripts/windows/fetch-engine.ps1 -Cpu x64 -Out "$env:RUNNER_TEMP/ardia-engine"
+          if ($LASTEXITCODE -ne 0) { throw 'Engine download or SHA256 verification failed' }
       - name: Unit-test browser launch switches under Windows MSVC
         shell: pwsh
         run: ./scripts/test-launch-flags.ps1
@@ -79,11 +89,13 @@ jobs:
           npx react-native run-windows --release --arch x64 --no-launch --no-deploy --no-packager --no-telemetry --logging
           if ($LASTEXITCODE -ne 0) { throw "Upstream Windows source compilation failed ($LASTEXITCODE)" }
           if (-not (Test-Path -LiteralPath 'windows/x64/Release/ArdiaApp.dll')) { throw 'No compiled ArdiaApp.dll' }
-      - name: Fetch verified upstream prebuilt Chromium engine
+      - name: Extract matching Chromium engine from official setup without shipping installer registrations
+        if: ${{ steps.upstream.outputs.engine_source == 'official_setup' }}
         shell: pwsh
         run: |
-          & ./upstream/scripts/windows/fetch-engine.ps1 -Cpu x64 -Out "$env:RUNNER_TEMP/ardia-engine"
-          if ($LASTEXITCODE -ne 0) { throw 'Engine download failed' }
+          $id = Get-Content work/identity.json -Raw | ConvertFrom-Json
+          & ./scripts/engine-from-official-setup.ps1 -Identity work/identity.json -Setup "$env:RUNNER_TEMP/ardia-official-setup/$($id.asset)" -CompiledApp "$env:GITHUB_WORKSPACE/upstream/apps/browser/windows/x64/Release" -Out "$env:RUNNER_TEMP/ardia-engine"
+          if ($LASTEXITCODE -ne 0) { throw 'Official same-tag setup engine extraction failed' }
       - name: Assemble source-built Windows browser with its engine
         shell: pwsh
         run: |
@@ -123,7 +135,7 @@ jobs:
           engine: custom-nsis
           running-exe: App\Ardia\Ardia.exe
           timeout-seconds: '900'
-          package-revision: b1r3
+          package-revision: b1r4
       - name: Verify real installer PE and action-reported SHA-256
         shell: pwsh
         env:
@@ -143,7 +155,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r3)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r4)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -156,7 +168,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r3)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r4)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -175,9 +187,9 @@ jobs:
         run: |
           @'
           ## Portability verification boundaries
-          - Official versioned Windows source and an exact matching engine release/asset are checked before installing/building dependencies.
-          - Missing/nonpublic engine releases are skipped; API errors are fatal. No unsupported engine is substituted.
-          - The engine archive is still checksum verified by upstream after download.
+          - Official versioned Windows source is checked. Either matching public engine or SHA256-pinned official SAME-TAG Windows setup is downloaded and verified before compilation.
+          - Missing/nonpublic engine releases trigger only strict same-tag verified setup fallback; API errors are fatal. Different-tag engine/setup substitution is forbidden.
+          - The upstream engine ZIP is SHA256 verified; official setup fallback is also SHA256 verified against the GitHub-published asset digest and Chromium DLL version.
           - Source compilation is checked when the source build step succeeds.
           - PE layout, profile redirection healthcheck, ZIP checksum, and installer checksum are checked separately.
           - GUI runtime, notifications, default-browser registration, update prompts, installed-app coexistence, crash recovery, and USB relocation are NOT proven by this headless workflow.

@@ -1,4 +1,4 @@
-# Source audit, portability findings and acceptance — b1r3
+# Source audit, portability findings and acceptance — b1r4
 
 ## Sources inspected (Nov 18, 2026)
 
@@ -12,7 +12,7 @@ Official upstream: `https://github.com/ardia-browser/ardia`; versioned Windows r
 | App configuration | upstream `launch-smoke.ps1` `ARDIA_CONFIG_DIR` set alongside data | app-selected directory | Ardia Windows | Not selected | same folder `Data\Ardia` | isolated custom config | none expected | config save/restart | SOURCE-INSPECTED; actual runtime untested |
 | Engine browser profiles | upstream Windows `launch-smoke.ps1` and `Paths.h`; references `DataDirectory()/Chromium` and `--user-data-dir` gate | app-selected `Chromium` child | Ardia/Chromium | Not selected | use documented data env; do NOT force arbitrary external profile switches | no profile harvesting | user-supplied profile override blocked | browsing/bookmarks/login | INFERRED complete containment; must observe |
 | App identity for taskbar/notifications | `AppIcon.h` fixed `kAppUserModelId=L"Ardia.Browser"`, `Ardia.cpp` installs notifications | AUMID, Windows-managed caches and possible CLSID | Windows shell / Ardia | Not selected | leave runtime registrations alone pending isolated acceptance | never remove installed-app AUMID | portable and installed identities may overlap | notification/click-to-open with installed app | SOURCE-INSPECTED, unresolved coexistence |
-| Installer browser registrations | upstream `scripts/windows/installer/Ardia.iss` | HKCU Classes, RegisteredApplications, Start Menu shortcut | Upstream installer ONLY | Not selected | don't include/re-run upstream installer; shared independent NSIS creates portable package | host entries not copied | portable not default browser | before-first-run checks | SOURCE-INSPECTED; installer runtime untested |
+| Installer browser registrations | upstream `scripts/windows/installer/Ardia.iss` | HKCU Classes, RegisteredApplications, Start Menu shortcut | Upstream installer ONLY | Not selected | optional silent original install in **ephemeral CI runner temp** only; copy binary files, never registrations; shared independent NSIS creates portable package | runner entries never packaged | portable not default browser | before-first-run checks | SOURCE-INSPECTED; installer runtime untested |
 | Automatic updates | Windows release notes, upstream Windows install and relaunch scripts | normal installed user app paths | Upstream app/installer | Not selected | updates via builder only; self-update avoided until tested | retains Data on package replacement | in-app update disabled by user behavior only | check update menu without performing install | SOURCE-INSPECTED; unresolved host-change risk |
 | Credentials | Chromium/Windows OS encrypted browser state | portable Data + Windows OS credential protection | Chromium / Windows | Not selected | profile stored locally, no unsafe crypto bypass | never decrypt, no host credential migration | cross-account password mobility unverified | login/restart/USB drive | NOT YET VERIFIED |
 | Empty directories and crash | source app-selected portable data root | `Data\Ardia` | Ardia/launcher | Not selected | direct redirection; ZIP includes empty Data directory; no scavenging | no host deletes/overwrites | no host recovery if unseen writes | empty tree / crash / restart | STATIC-VALIDATED ZIP only |
@@ -22,7 +22,7 @@ Official upstream: `https://github.com/ardia-browser/ardia`; versioned Windows r
 | Stage | Status at kit creation |
 |---|---|
 | Source mechanisms and build chain | SOURCE-INSPECTED |
-| Python source resolver tests | STATIC-VALIDATED (4 tests) |
+| Python source resolver tests | STATIC-VALIDATED (22 tests) |
 | Kit ZIP integrity | STATIC-VALIDATED when generated |
 | Compiler / real root launcher in Windows | NOT YET VERIFIED |
 | Upstream source build | NOT YET VERIFIED |
@@ -68,12 +68,13 @@ On a disposable Windows VM and brand-new Ardia profile:
 Evidence: **C++ UNIT-TESTED locally** for command-line assembly; **NOT YET VERIFIED** for actual Ardia switch support, Windows GUI, updater suppression, cross-device credential portability and security consequences.
 
 
-## b1r3 dependency availability and fallback acceptance
+## b1r4 engine/setup fallback acceptance
 
-- **SOURCE-INSPECTED (upstream):** Each source version ships `scripts/windows/engine/prebuilt.json` with a release tag, an x64 engine archive name and a SHA-256. `scripts/windows/fetch-engine.ps1` downloads the named archive with `gh release download` and verifies the archive hash before extraction.
-- **USER GITHUB LOG OBSERVATION (b1r2):** Windows source compilation passed; the engine fetch failed because upstream release `windows-engine-20261116-4` was not publicly accessible. This is not evidence about launcher or browser runtime.
-- **STATIC-VALIDATED (b1r3):** New resolver reads the manifest from the candidate's immutable source SHA and uses GitHub release/asset metadata to reject inaccessible engine releases before compilation. A later Windows source-check step verifies the local manifest hash and engine identity match preflight.
-- **OFFLINE-UNIT-TESTED:** Synthetic GitHub response fixtures exercise missing engine 404, fallback to an earlier official release, exact-version fail-closed, mismatched engine checksum, missing asset, malformed manifest path, GitHub 403, and channel preference.
-- **NOT YET VERIFIED:** The b1r3 workflow has not executed on GitHub Actions. Successful metadata lookup cannot guarantee actual network download of a large engine ZIP or its SHA-256. The unmodified upstream fetch script enforces the archive hash. GUI runtime, profile persistence, shell modifications and installer upgrade behavior remain manual Windows acceptance tasks.
+- **LOG-OBSERVED (b1r3):** All 18 resolver tests passed, then the engine dependency gate reported 404 for `windows-engine-20261116-4`, `windows-engine-20261116-2`, `windows-engine-20261115-7`. No application compilation or portable ZIP occurred in that run.
+- **SOURCE-INSPECTED:** An upstream exact-tag official Windows setup is available in versioned releases. The separate `windows-alpha` release moves forward and is not used as a source substitute.
+- **STATIC-VALIDATED (b1r4):** Resolver selects a public engine when possible, else only a verified official *same-tag* Windows setup with strict download URL, asset name, ID, SHA-256 digest and source SHA controls. Setup hash is verified before compilation. The original manifest hash is rechecked after checkout.
+- **OFFLINE-TESTED:** Python fixture tests cover same-tag fallback, digest absence, wrong URL, foreign asset metadata, mismatched engine SHA, GitHub 403 and numeric version sorting. C++ launcher tests retained from b1r2.
+- **NOT YET VERIFIED:** Windows `7z`/Inno unattended extraction, exact Chromium file-version match, actual assembly, executable startup, notifications, process shutdown, shell and registry traces, ZIP installer behavior and release publication.
+- **CI SAFETY:** 7-Zip extraction is preferred; Inno silent `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /DIR=...` is a fallback limited to a temporary folder in a hosted runner (runner-only transient registrations may occur). No upstream setup program is executed on the user's computer. Test in a disposable VM before personal use.
 
-Suggested b1r3 acceptance steps: (1) Run `channel=nightly`, blank `version` and inspect the preflight log for skipped tags. (2) If none qualify, confirm the workflow stopped before `pnpm install` and C++/React Native compilation. (3) If one qualifies, confirm source commit and manifest SHA checks before build, followed by upstream engine ZIP hash verification. (4) Only after a validated ZIP and installer exist, run the original manual profile/session, restart, notification, installed-app coexistence and upgrade tests.
+Suggested b1r4 steps: (1) Run `channel=nightly` with blank version. (2) Verify preflight chooses `official_setup` and the **GitHub-published setup SHA-256** matches the downloaded file before app compilation. (3) Review the engine extraction and Chromium-version step, then app assembly and headless dependency verifier. (4) Only use a resulting ZIP/installer after independent interactive profile, restart, notification and update tests.

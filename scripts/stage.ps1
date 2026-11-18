@@ -40,7 +40,7 @@ EULAVersion=1
 
 [Version]
 PackageVersion=$($id.package_version)
-DisplayVersion=$($id.version) Unofficial b1r3
+DisplayVersion=$($id.version) Unofficial b1r4
 
 [Control]
 Icons=1
@@ -52,7 +52,7 @@ foreach($f in @('LICENSE','LICENSE.Apache-2.0','NOTICE')){
   if(-not(Test-Path -LiteralPath $src)){throw "Required upstream attribution missing: $f"}
   Copy-Item -LiteralPath $src -Destination (Join-Path $root "Other\Source\$f")
 }
-$source="Ardia source: https://github.com/ardia-browser/ardia/tree/$($id.tag)`nUpstream commit: $($id.commit)`nBuild: source-built Windows x64 app plus official checksum-verified prebuilt engine via upstream scripts/windows/fetch-engine.ps1`nThe source and engine GPL/Apache/Chromium/uBlock notices are in NOTICE and upstream source; see release assets for source.`n"
+$source="Ardia source: https://github.com/ardia-browser/ardia/tree/$($id.tag)`nUpstream commit: $($id.commit)`nBuild: source-built Windows x64 ArdiaApp.dll plus verified Chromium engine source: $($id.engine_source). Setup fallback (if used) is an official matching-tag installer unpacked/isolated ONLY on hosted CI, not an official portable release.`nThe source and engine GPL/Apache/Chromium/uBlock notices are in NOTICE and upstream source; see release assets for source.`n"
 [IO.File]::WriteAllText((Join-Path $root 'Other\Source\SOURCE.txt'),$source,[Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'launcher\ArdiaPortable.cpp') -Destination (Join-Path $root 'Other\Source\ArdiaPortable.cpp')
 Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'launcher\ArdiaLaunchFlags.h') -Destination (Join-Path $root 'Other\Source\ArdiaLaunchFlags.h')

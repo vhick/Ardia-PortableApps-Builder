@@ -16,10 +16,10 @@ class ResolveTests(unittest.TestCase):
         r={'tag_name':'v0.2.47-nightly.3','assets':[{'name':'Setup.exe','size':2300000}]}
         self.assertIsNone(resolver.asset(r))
 class BuilderRevisionTests(unittest.TestCase):
-    def test_kit_uses_b1r3_everywhere(self):
+    def test_kit_uses_b1r4_everywhere(self):
         files=['scripts/resolve.py','.github/workflows/build.yml','scripts/stage.ps1']
         for file in files:
-            self.assertIn('b1r3',(ROOT/file).read_text(encoding='utf-8'),file)
+            self.assertIn('b1r4',(ROOT/file).read_text(encoding='utf-8'),file)
     def test_launcher_arguments_are_wired(self):
         source=(ROOT/'launcher/ArdiaPortable.cpp').read_text(encoding='utf-8')
         self.assertIn('ardia_portable::BuildBrowserArguments(forwarded,useDefaultFlags)',source)
@@ -30,12 +30,21 @@ class BuilderRevisionTests(unittest.TestCase):
         source=(ROOT/'scripts/verify-upstream.ps1').read_text(encoding='utf-8')
         self.assertIn('engine_manifest_sha256',source)
         self.assertIn('engine_sha256',source)
+        self.assertIn('engine_source', (ROOT/'scripts/resolve.py').read_text())
+        self.assertIn('official_setup', (ROOT/'.github/workflows/build.yml').read_text())
+        self.assertIn('downloaded_setup_sha256', (ROOT/'scripts/validate.py').read_text())
         self.assertIn('engine_release',source)
         workflow=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
         self.assertLess(workflow.index('Preflight Windows release'),workflow.index('Install upstream pinned pnpm'))
         self.assertLess(workflow.index('Verify source SHA and lockfile identity'),workflow.index('Compile real Ardia Windows application'))
-        self.assertIn('package-revision: b1r3',workflow)
+        self.assertIn('package-revision: b1r4',workflow)
     def test_packaged_source_includes_helper(self):
         self.assertIn('ArdiaLaunchFlags.h',(ROOT/'scripts/stage.ps1').read_text(encoding='utf-8'))
         self.assertIn('ArdiaLaunchFlags.h',(ROOT/'scripts/validate.py').read_text(encoding='utf-8'))
+    def test_official_setup_is_reverified_before_compilation(self):
+        workflow=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
+        self.assertLess(workflow.index('Download and SHA256-verify official'),workflow.index('Compile real Ardia Windows application'))
+        self.assertIn('Get-FileHash', (ROOT/'scripts/download-official-setup.ps1').read_text())
+        self.assertIn('engine_chromium', (ROOT/'scripts/engine-from-official-setup.ps1').read_text())
+        self.assertIn('CompiledApp', (ROOT/'scripts/engine-from-official-setup.ps1').read_text())
 if __name__=='__main__':unittest.main()

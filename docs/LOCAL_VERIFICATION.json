@@ -1,18 +1,13 @@
 {
-  "kit_revision": "b1r3",
-  "evidence_timestamp_utc": "2026-11-18",
-  "local_validation": {
-    "python_resolver_and_preflight_unit_tests": "18 total PASS (offline synthetic GitHub API fixtures; 10 engine-specific scenarios)",
-    "workflow_yaml_parse": "PASS (local PyYAML static parser; not a GitHub Actions runner)",
-    "source_files_and_kit_zip": "PASS (SHA256SUMS.builder.txt verified after archive creation; ZIP CRC integrity tested)",
-    "prior_b1r2_windows_source_compilation": "PASS in user-provided GitHub Actions log; b1r2 engine fetch then FAILED",
-    "b1r3_windows_source_compilation": "NOT YET VERIFIED",
-    "b1r3_live_github_api_preflight": "NOT YET VERIFIED in a Windows Actions run",
-    "launcher_cpp_argument_tests": "PASS locally on Linux; b1r3 does not change launcher source",
-    "b1r3_installer_generation": "NOT YET VERIFIED",
-    "b1r3_release_publication": "NOT YET VERIFIED",
-    "manual_browser_profile_runtime": "NOT YET VERIFIED",
-    "traceguard_shellguard_and_notifications": "NOT YET VERIFIED; no speculative cleanup added",
-    "upstream_engine_assets_publicly_available": "At inspection, v0.2.47-nightly.5/.4/.3 engine release pages returned 404; cannot guarantee a buildable current release"
-  }
+  "revision": "b1r4",
+  "source_log": "logs_120006987741.zip",
+  "ci_log_findings": "18 b1r3 tests passed; preflight failed with three engine release HTTP 404 responses",
+  "python_unit_tests": 22,
+  "local_python_result": "PASS",
+  "windows_source_build_b1r4": "NOT YET VERIFIED",
+  "windows_extraction_and_assembly_b1r4": "NOT YET VERIFIED",
+  "portableapps_runtime": "NOT YET VERIFIED",
+  "installer": "NOT YET VERIFIED",
+  "publisher": "NOT YET VERIFIED",
+  "note": "Offline local static evidence only. Windows acceptance is mandatory."
 }

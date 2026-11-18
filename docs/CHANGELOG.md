@@ -1,4 +1,14 @@
-# b1r3 — early engine preflight and safe nightly fallback, 2026-11-18
+# b1r4 — verified same-source-tag setup engine fallback, 2026-11-18
+
+- Inspect actual b1r3 CI log: 18 tests passed; preflight stopped on three unavailable upstream engine releases (404).
+- Add a tightly scoped alternative: when exact Chromium engine release is unavailable, accept only the official versioned Windows x64 setup asset **from the same immutable Ardia source tag** if GitHub publishes its SHA-256 digest.
+- Download and SHA-256-check the setup **before** app compilation; fail on missing digest, invalid URL, size mismatch, or API errors.
+- Use 7-Zip extraction if possible; otherwise Inno Setup's documented silent mode in an **ephemeral hosted runner** and isolated temp directory. The normal user is never instructed to install upstream Ardia.
+- Verify extracted payload's Chromium DLL version and components before using it as an engine donor for upstream source-compiled `ArdiaApp.dll` and `assemble.ps1`.
+- Preserve b1r2 experimental launcher flags and Data path behavior, shared NSIS Package Builder v1.0.0 and Release Publisher v1.1.1.
+- Add mock tests for safe setup selection and provenance. Windows build/portability remain unverified until real Actions run and manual checks.
+
+# b1r4 — early engine preflight and safe nightly fallback, 2026-11-18
 
 - Inspect each candidate Windows release's immutable source-commit `scripts/windows/engine/prebuilt.json`.
 - Verify the exact matching `windows-engine-*` GitHub release and x64 archive asset metadata **before** dependency installation and Windows source compilation.

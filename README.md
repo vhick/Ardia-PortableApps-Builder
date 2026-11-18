@@ -1,8 +1,8 @@
-# Ardia PortableApps Windows x64 — Source-Builder Kit b1r3
+# Ardia PortableApps Windows x64 — Source-Builder Kit b1r4
 
 **Mode:** PORTABLEAPPS only. The ZIP you are downloading is the **builder source kit**, not a precompiled browser. GitHub Actions builds the browser and its genuine Windows C++ portable launcher and creates the actual ZIP and `.paf.exe` installer.
 
-**Status:** b1r3 source and offline fixture tests have been checked locally. The supplied b1r2 GitHub Actions logs showed successful Windows application source compilation but a subsequent failure downloading an unavailable engine release. **b1r3 itself has not been run on Windows; interactive GUI acceptance, USB relocation, notification compatibility, installed-app coexistence, and actual installer execution remain unverified.** Treat first resulting Windows packages as *experimental* until the manual acceptance checks pass. They are not official PortableApps.com releases.
+**Status:** b1r4 local offline fixture tests have been checked. The supplied b1r2 GitHub Actions logs showed successful source compilation followed by an unavailable engine. The new b1r3 log confirms the updated preflight rejected three unavailable engine tags before compiling. **b1r4 itself has not been run on Windows; interactive GUI acceptance, USB relocation, notification compatibility, installed-app coexistence, and actual installer execution remain unverified.** Treat first resulting Windows packages as *experimental* until the manual acceptance checks pass. They are not official PortableApps.com releases.
 
 ## User setup using GitHub Desktop
 
@@ -11,9 +11,9 @@
 3. Extract this entire ZIP **into the cloned repository root**. Confirm the hidden `.github/workflows/build.yml` exists at the root and `README.md` sits beside it. Do not nest it inside another folder.
 4. In GitHub Desktop, enter a commit summary, click **Commit to main**, then **Push origin**.
 5. On your GitHub repository page, go to **Actions > Ardia PortableApps Source Builder > Run workflow**. Leave `version` blank for automatic release selection. `channel=auto` prefers a stable Windows x64 release, falling back to a versioned nightly if no Windows stable exists. Set `nightly` to always pick nightlies. An exact `v0.2.47-nightly.3` can be requested as long as its source release remains accessible.
-6. The first networking step checks the exact engine manifest/release *before* the expensive source build. If none is publicly available, the workflow stops here and tells you which nightlies were skipped. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
+6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, b1r4 uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
 7. Open the workflow run. Separate lines describe source resolution, Windows source compilation, engine SHA-256 validation, launcher compilation, static ZIP validation, installer generation, and publication.
-8. If it succeeds, visit **Releases** in this BUILDER repository and find the new `portable-...-b1r3` release. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
+8. If it succeeds, visit **Releases** in this BUILDER repository and find the new `portable-...-b1r4` release. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
 9. **ZIP:** extract `ArdiaPortable/` into the desired PortableApps location and launch `ArdiaPortable.exe`. **Installer:** after acceptance tests, install the `.paf.exe` into the PortableApps platform directory, then refresh the PortableApps menu.
 10. Upgrade: fully exit the browser, back up the entire `Data/` folder, and install a newer ZIP/installer **over the same ArdiaPortable folder**. Never remove, overwrite or replace `Data/`. On a failed upgrade, close Ardia, retain Data, reinstall prior app files and **restore matching backup Data** if the profile schema changed.
 
@@ -59,29 +59,29 @@ For troubleshooting, run `ArdiaPortable.exe --portable-no-default-flags` to star
 
 **Verification:** C++ launch-option construction tests were run locally; the workflow now runs the same tests using Windows MSVC. These checks prove only the launch-command construction; there is no Windows browser runtime evidence in this kit. If Ardia offers Chromium's `chrome://version`, check the running command line there to see what was passed (listing a switch does **not** prove its behavior).
 
-## b1r3 Windows nightly engine availability preflight (new)
+## b1r4 verified official same-tag Windows setup fallback (new)
 
-**Why:** The user-provided b1r2 GitHub Actions log completed the Windows app compile and then failed while trying to fetch `ardia-engine-win-x64.zip` from `windows-engine-20261116-4`. The official engine release page was unavailable publicly at inspection time. Ardia's official `v0.2.47-nightly.4` and `.3` tags also reference separately named engine releases, so simply choosing yesterday's nightly is not sufficient.
+**Why:** In the user-supplied b1r3 GitHub Actions logs (`logs_120006987741.zip`), all 18 tests passed, but source preflight failed because the Chromium engine releases for nightlies .5, .4 and .3 returned GitHub 404. No app was compiled in that run.
 
-**What the new `scripts/resolve.py` actually does:**
+**What b1r4 does differently:**
 
-1. Lists only official `ardia-browser/ardia` **versioned** releases with the exact x64 Windows setup asset, filtering by `channel` / explicit `version`.
-2. Orders matching candidates by **numeric version/nightly sequence**; `auto` prefers buildable stable Windows releases, then buildable nightlies.
-3. Resolves the candidate's real source commit SHA. Reads `scripts/windows/engine/prebuilt.json` **from that immutable commit**, not from `main` or a different nightly.
-4. Requests the *specific* `windows-engine-YYYYMMDD-N` GitHub release declared by that source and checks for the **exact uploaded engine ZIP** with a plausible nonzero size. If the GitHub release asset exposes a digest, it must match the source SHA-256.
-5. On an expected missing-manifest/engine-release **404** or absent exact engine asset, records a reason and tries the next eligible version. An explicitly requested version **never** falls back. **401, 403, rate limits, malformed responses, and server errors do not trigger silent fallback; they fail the step.**
-6. Writes `work/identity.json` recording upstream source commit, manifest SHA-256, engine release, exact asset name and engine SHA-256, plus any skipped candidates. After checkout, `scripts/verify-upstream.ps1` independently verifies the local source commit, tag, **exact manifest hash** and engine fields.
-7. Only then installs upstream dependencies and compiles the source. The upstream `fetch-engine.ps1` **still must actually download the ZIP and compare SHA-256 before extraction**. An available metadata listing alone never certifies the archive or a working executable.
+1. Resolves a Windows release in **official** `ardia-browser/ardia`; its source tag and full commit SHA are fixed. Rejects moving `main`, unknown forks, unverifiable releases and unexpected asset names.
+2. Reads source-commit-locked `scripts/windows/engine/prebuilt.json` and checks for the corresponding official published engine release and binary. An available engine is always preferred.
+3. If the **exact engine release is inaccessible**, checks ONLY the **same source tag's** official Windows x64 setup asset with a published GitHub `sha256:` digest, expected filename, asset ID and download URL. An unversioned `windows-alpha` pointer is not substituted. An explicit version never silently switches source tags.
+4. Downloads and checks the entire setup against the published GitHub SHA-256 and exact reported size **before** Node dependencies or Windows compilation. If the hash is absent or incorrect, stops safely.
+5. Builds the actual upstream Windows `ArdiaApp.dll` from the pinned source. In a disposable hosted CI runner, tries to unpack the authenticated same-tag setup without running it using 7-Zip. If extraction is unsupported, b1r4 may run the official Inno Setup installer **silently into an isolated runner temporary directory**. These temporary runner registrations are **not** copied into the portable ZIP. This is not an official developer portable distribution.
+6. Verifies the extracted payload contains `Ardia.exe`, `ArdiaApp.dll` and `chrome.dll`, and checks `chrome.dll`'s version against the original source engine manifest. Rejects unexpected junctions. Uses its verified Chromium runtime while replacing the installer app component with the compiled source app through upstream `assemble.ps1`.
+7. Records source commit, dependency lockfile hash, engine strategy, original manifest, downloaded SHA-256 and builder revision in `Other/Source/build-identity.json`. Builds and checks the independent PortableApps ZIP first, then calls the pinned shared installer and publisher.
 
-**If every matching engine is missing:** the action deliberately fails **before compilation** with a useful reason; there is no binary to download. This cannot be solved by swapping in an unrelated Chromium engine or extracting an unverified setup EXE. A private/deleted/not-yet-published release may also appear as GitHub API 404; these cases are not distinguishable from a public unauthenticated request. The upstream project needs to publish the matching official engine or a matching older version must have a publicly available engine. Do not disable validation checks to force a release.
+**Limitations:** This fallback's setup extraction, assembly and Chromium version equality have **not yet run in Windows Actions**. Some Inno Setup variants may not support the assumed unattended extraction/install path, and exact engine DLL version could differ; b1r4 is designed to stop rather than silently ship mismatched binaries. The official upstream Windows setup may temporarily register a browser on the hosted CI runner; that is not a change to your own computer and must not be confused with a portable runtime test. The resulting browser's background child processes, updater, host registry behavior, notifications and portable credential mobility still require manual acceptance.
 
-The `v0.2.47-nightly.5` source specifically declares `windows-engine-20261116-4`, asset `ardia-engine-win-x64.zip` with checksum `ffbda784d8753702a1b09d663bcfc766d39d32624ef4b5e5d27e8bb79aa26f2b`. This is **reference evidence only**; the resolver dynamically rechecks each candidate and never hardcodes this engine into a different version.
+**Why not use `windows-alpha` directly?** That is an independently moving nightly alias. b1r4 accepts only a versioned setup asset belonging to the selected source tag; no silent cross-commit substitutions. The user can test `nightly` channel with `version` blank for numeric selection or specify a tagged release intentionally.
 
 ## Build provenance and licensing
 
 - Only official `ardia-browser/ardia` versioned release tags with Windows x64 assets are eligible. Unversioned aliases like `windows-alpha`, `main`, unverified forks and unofficial mirrors are **not** silently selected.
 - GitHub API resolves tag to full commit SHA; source checkout SHA and tag are checked. `pnpm-lock.yaml` is SHA-256 recorded, and dependencies are installed with `--frozen-lockfile`.
-- The Windows application is compiled using the upstream React Native Windows recipe; the browser's Chromium engine is downloaded **by upstream `scripts/windows/fetch-engine.ps1` with a release-locked SHA-256 check**, rather than recompiling the huge Chromium engine on GitHub Free runners.
+- The Windows application is compiled using the upstream React Native Windows recipe; its Chromium engine comes either from the source-matched, SHA-256-pinned engine ZIP or the source-tag-identical, SHA-256-verified official Windows setup. The Chromium engine itself is not built from source on GitHub Free runners.
 - Upstream `scripts/windows/assemble.ps1` combines the app and engine. A separate C++ MSVC build produces `ArdiaPortable.exe`.
 - Source for the selected upstream tag is at `https://github.com/ardia-browser/ardia/tree/<tag>`. Upstream supplies GPL-3.0, Apache-2.0, and dependency attribution under `LICENSE`, `LICENSE.Apache-2.0`, and `NOTICE`; copied into `Other/Source`. Users should review full Chromium/Helium/uBlock obligations and ensure source availability with binary distribution.
 - The resulting package is unofficial, unsigned unless the source upstream provides signing, and **not certified** by PortableApps.com. Windows SmartScreen and antivirus can show warnings.
@@ -89,9 +89,9 @@ The `v0.2.47-nightly.5` source specifically declares `windows-engine-20261116-4`
 
 ## Limitations and troubleshooting
 
-- If the workflow finds no Windows release **with an accessible matching engine**, it fails closed before spending time compiling. Inspect the `Preflight Windows release and EXACT engine availability BEFORE compilation` log for `PREFLIGHT SKIPPED` messages. The fix may require waiting for upstream engine publication, not changing builder settings.
+- If there is no publicly accessible matching engine **and** no verified official same-tag setup, preflight fails before compilation. Inspect `Preflight Windows release...` for the exact failure; missing GitHub-published SHA-256 is intentionally not bypassed.
 - If React Native compilation fails, use `Compile real Ardia Windows application from source` logs. The upstream Windows source is rapidly changing; exact tag compatibility is not guaranteed.
-- If `fetch-engine.ps1` still reports an unavailable release (it can be removed after preflight), or a SHA mismatch, stop. Never bypass the checksum. Preflight checks release *metadata*, not the downloaded bytes.
+- If the upstream engine download or official same-tag setup download fails, or a SHA/version mismatch occurs, stop. Do not bypass the integrity verification. Downloaded files are independently checked before compilation.
 - If `ArdiaPortable.exe` reports missing `chrome.dll` or `ArdiaApp.dll`, upstream app assembly failed: do not copy a different browser's binaries.
 - If GitHub Action `installer` fails, the validated ZIP (if created) is preserved as a temporary **failure-only** workflow artifact. Do not claim a successful installer.
 - If an installed Ardia is detected, use a separate Windows test account. Do not disable the guard in daily use. On a disposable coexistence VM only, `--allow-installed-coexistence-test` bypasses it for acceptance testing.

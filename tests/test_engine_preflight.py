@@ -1,4 +1,4 @@
-"""Fully offline fixtures for b1r3 Windows engine preflight. No live GitHub API required."""
+"""Fully offline fixtures for official Windows engine/setup provenance. No GitHub API needed."""
 import base64
 import importlib.util
 import json
@@ -8,17 +8,19 @@ from unittest.mock import patch
 import urllib.error
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('ardia_resolver_b1r3', ROOT / 'scripts/resolve.py')
+spec = importlib.util.spec_from_file_location('ardia_resolver_b1r4', ROOT / 'scripts/resolve.py')
 resolver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(resolver)
 
 
 def release(tag, *, stable=False):
     version = tag.removeprefix('v')
+    name=f'Ardia-{version}-windows-x64-setup.exe'
     return {'tag_name': tag, 'draft': False, 'prerelease': not stable,
-            'assets': [{'name': f'Ardia-{version}-windows-x64-setup.exe',
+            'assets': [{'name': name,'id': 43210,
                         'size': 80_000_000, 'state': 'uploaded',
-                        'browser_download_url': 'https://github.com/ardia-browser/ardia/releases/download/' + tag + '/Ardia-setup.exe'}]}
+                        'digest': 'sha256:' + 'a'*64,
+                        'browser_download_url': 'https://github.com/ardia-browser/ardia/releases/download/' + tag + '/' + name}]}
 
 
 def prebuilt(engine_name, sha='a'*64):
@@ -47,10 +49,11 @@ class EnginePreflightTests(unittest.TestCase):
         }
         with patch.object(resolver,'api',side_effect=lambda path,allow_404=False:mapping[path]):
             selected, sha, manifest, asset, skipped = resolver.choose([newer,older],'nightly','')
-        self.assertEqual(selected['tag_name'],older['tag_name'])
-        self.assertEqual(sha,'b'*40)
-        self.assertEqual(manifest['release'],'windows-engine-20261116-2')
-        self.assertEqual(asset['size'],400_000_000)
+        self.assertEqual(selected['tag_name'],newer['tag_name'])
+        self.assertEqual(sha,'a'*40)
+        self.assertEqual(manifest['release'],'windows-engine-20261116-4')
+        self.assertEqual(asset['size'],80_000_000)
+        self.assertEqual(asset['method'],'official_setup')
         self.assertEqual(skipped[0][0],newer['tag_name'])
 
     def test_no_engine_returns_no_candidate(self):
@@ -60,8 +63,8 @@ class EnginePreflightTests(unittest.TestCase):
                    '/releases/tags/windows-engine-20261116-4': None}
         with patch.object(resolver,'api',side_effect=lambda path,allow_404=False:mapping[path]):
             selected, _, _, _, notes = resolver.choose([r],'nightly','')
-        self.assertIsNone(selected)
-        self.assertIn('404', notes[0][1])
+        self.assertEqual(selected['tag_name'], r['tag_name'])
+        self.assertIn('OFFICIAL SETUP', notes[0][1].upper())
 
     def test_missing_matching_asset_skips_candidate(self):
         m = {'release': 'windows-engine-20261116-4', 'asset':'ardia-engine-win-x64.zip','sha256':'a'*64}
@@ -73,9 +76,8 @@ class EnginePreflightTests(unittest.TestCase):
     def test_engine_digest_mismatch_not_accepted(self):
         m = {'release':'windows-engine-20261116-4','asset':'ardia-engine-win-x64.zip','sha256':'a'*64}
         with patch.object(resolver,'api',return_value=engine(m['release'],'b'*64)):
-            found, problem = resolver.check_engine(m,cache={})
-        self.assertIsNone(found)
-        self.assertIn('conflicts',problem)
+            with self.assertRaisesRegex(RuntimeError,'digest conflicts'):
+                resolver.check_engine(m,cache={})
 
     def test_manifest_requires_valid_paths_and_pinned_sha256(self):
         with patch.object(resolver,'api',return_value=prebuilt('windows-engine-20261116-4','b'*64)):
@@ -125,8 +127,9 @@ class EnginePreflightTests(unittest.TestCase):
             if path.startswith('/releases/tags/'):return None
             raise AssertionError(path)
         with patch.object(resolver,'api',side_effect=fake):
-            with self.assertRaisesRegex(RuntimeError,'checked 1'):
-                resolver.resolve('nightly','v0.2.47-nightly.5')
+            selected, _, _, meta, _ = resolver.resolve('nightly','v0.2.47-nightly.5')
+        self.assertEqual(selected['tag_name'],'v0.2.47-nightly.5')
+        self.assertEqual(meta['method'],'official_setup')
 
     def test_reject_release_with_setup_asset_but_no_engine_manifest(self):
         r = release('v0.2.47-nightly.5')
@@ -137,6 +140,43 @@ class EnginePreflightTests(unittest.TestCase):
             selection=resolver.choose([r],'nightly','')
         self.assertIsNone(selection[0])
         self.assertIn('prebuilt.json',selection[-1][0][1])
+
+
+    def test_official_setup_requires_published_sha256_and_exact_url(self):
+        good=release('v0.2.47-nightly.5')
+        selected,reason=resolver.check_setup(good)
+        self.assertEqual(selected['method'],'official_setup')
+        self.assertIsNone(reason)
+        for attribute,invalid in (('digest',None),('browser_download_url','https://evil.invalid/x'),('id',None)):
+            with self.subTest(attribute=attribute):
+                obj=release('v0.2.47-nightly.5')
+                obj['assets'][0][attribute]=invalid
+                item,reason=resolver.check_setup(obj)
+                self.assertIsNone(item)
+                self.assertIsNotNone(reason)
+
+    def test_matching_public_engine_preferred_to_official_setup(self):
+        newer=release('v0.2.47-nightly.5')
+        mapping={
+            '/commits/v0.2.47-nightly.5': {'sha':'a'*40},
+            '/contents/scripts/windows/engine/prebuilt.json?ref='+'a'*40: prebuilt('windows-engine-20261116-4'),
+            '/releases/tags/windows-engine-20261116-4': engine('windows-engine-20261116-4')}
+        with patch.object(resolver,'api',side_effect=lambda path,allow_404=False:mapping[path]):
+            selected,sha,manifest,asset,notes=resolver.choose([newer],'nightly','')
+        self.assertEqual(asset['method'],'prebuilt_engine')
+        self.assertEqual(asset['size'],400_000_000)
+        self.assertFalse(notes)
+
+    def test_missing_engine_and_missing_setup_digest_skip_candidate(self):
+        r=release('v0.2.47-nightly.5')
+        r['assets'][0]['digest']=None
+        mapping={'/commits/v0.2.47-nightly.5': {'sha':'a'*40},
+                 '/contents/scripts/windows/engine/prebuilt.json?ref='+'a'*40: prebuilt('windows-engine-20261116-4'),
+                 '/releases/tags/windows-engine-20261116-4': None}
+        with patch.object(resolver,'api',side_effect=lambda path,allow_404=False:mapping[path]):
+            selected,_,_,_,reasons=resolver.choose([r],'nightly','')
+        self.assertIsNone(selected)
+        self.assertIn('SHA-256',reasons[0][1])
 
 
 if __name__ == '__main__':

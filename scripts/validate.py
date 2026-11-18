@@ -45,6 +45,10 @@ def stage(root):
     if not re.fullmatch(r'\d+\.\d+\.\d+\.\d+',identity['package_version']):raise RuntimeError('PackageVersion must have four numeric parts')
     if not re.fullmatch(r'[0-9a-f]{40}',identity['commit']):raise RuntimeError('Missing exact upstream source commit')
     if not re.fullmatch(r'[0-9a-f]{64}',identity.get('lockfile_sha256','')):raise RuntimeError('Missing lockfile checksum identity')
+    if identity.get('engine_source') not in ('prebuilt_engine','official_setup'):raise RuntimeError('Unrecorded engine provenance')
+    if identity['engine_source']=='official_setup':
+        if not re.fullmatch(r'[0-9a-f]{64}',identity.get('downloaded_setup_sha256','')):raise RuntimeError('Official setup extraction has no verified SHA256')
+        if identity.get('downloaded_setup_sha256')!=identity.get('asset_sha256','').lower().removeprefix('sha256:'):raise RuntimeError('Setup hash differs from GitHub-published digest')
     if not ini.get('Version','DisplayVersion').startswith(identity['version']):raise RuntimeError('Inconsistent display version')
     print('STATIC-VALIDATED: PE x64, icons, metadata, upstream binaries, Data and source attribution')
     return identity
