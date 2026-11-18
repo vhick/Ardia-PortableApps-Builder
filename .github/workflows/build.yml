@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Optional exact upstream tag, e.g. v0.2.47-nightly.3; blank resolves versioned Windows releases'
+        description: 'Optional exact upstream tag. Blank selects the latest buildable Windows x64 release with a public matching engine'
         type: string
         default: ''
       channel:
-        description: 'Latest Windows x64 release channel; auto prefers stable if one exists, otherwise nightly'
+        description: 'Find latest buildable Windows release; auto prefers working stable, then working nightly'
         type: choice
         options: [auto, nightly, stable]
         default: auto
@@ -38,11 +38,14 @@ jobs:
       - name: Verify pinned shared action tag identities before integration
         shell: pwsh
         run: ./scripts/verify-actions.ps1
-      - name: Resolve versioned upstream Windows release
+      - name: Test resolver and engine fallback offline (no network)
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+      - name: Preflight Windows release and EXACT engine availability BEFORE compilation
         id: upstream
         shell: pwsh
         run: python scripts/resolve.py
-      - name: Check out exact upstream source tag
+      - name: Check out exact preflight-resolved upstream source tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ardia-browser/ardia
@@ -54,6 +57,9 @@ jobs:
       - name: Verify source SHA and lockfile identity
         shell: pwsh
         run: ./scripts/verify-upstream.ps1 -Identity work/identity.json
+      - name: Unit-test browser launch switches under Windows MSVC
+        shell: pwsh
+        run: ./scripts/test-launch-flags.ps1
       - name: Configure upstream Node.js toolchain
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
@@ -94,9 +100,6 @@ jobs:
       - name: Stage genuine PortableApps structure and original icons
         shell: pwsh
         run: ./scripts/stage.ps1 -App "$env:RUNNER_TEMP/ardia-assembled" -Stage "$env:GITHUB_WORKSPACE/staging" -Identity "$env:GITHUB_WORKSPACE/work/identity.json"
-      - name: Unit-test browser launch switches under Windows MSVC
-        shell: pwsh
-        run: ./scripts/test-launch-flags.ps1
       - name: Compile the real C++ portable launcher
         shell: pwsh
         run: ./scripts/compile-launcher.ps1 -Source "$env:GITHUB_WORKSPACE/launcher/ArdiaPortable.cpp" -Output "$env:GITHUB_WORKSPACE/staging/ArdiaPortable/ArdiaPortable.exe"
@@ -120,7 +123,7 @@ jobs:
           engine: custom-nsis
           running-exe: App\Ardia\Ardia.exe
           timeout-seconds: '900'
-          package-revision: b1r2
+          package-revision: b1r3
       - name: Verify real installer PE and action-reported SHA-256
         shell: pwsh
         env:
@@ -140,7 +143,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r2)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r3)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -153,7 +156,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r2)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r3)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -172,6 +175,9 @@ jobs:
         run: |
           @'
           ## Portability verification boundaries
+          - Official versioned Windows source and an exact matching engine release/asset are checked before installing/building dependencies.
+          - Missing/nonpublic engine releases are skipped; API errors are fatal. No unsupported engine is substituted.
+          - The engine archive is still checksum verified by upstream after download.
           - Source compilation is checked when the source build step succeeds.
           - PE layout, profile redirection healthcheck, ZIP checksum, and installer checksum are checked separately.
           - GUI runtime, notifications, default-browser registration, update prompts, installed-app coexistence, crash recovery, and USB relocation are NOT proven by this headless workflow.

@@ -1,4 +1,15 @@
-# b1r2 — initial source builder, 2026-11-18
+# b1r3 — early engine preflight and safe nightly fallback, 2026-11-18
+
+- Inspect each candidate Windows release's immutable source-commit `scripts/windows/engine/prebuilt.json`.
+- Verify the exact matching `windows-engine-*` GitHub release and x64 archive asset metadata **before** dependency installation and Windows source compilation.
+- Skip source-tag-specific missing engine release/asset (404); fall back to next semantically sorted eligible stable/nightly. Exact `version` never falls back.
+- Fail on GitHub API authentication, rate-limit, server errors and unsafe/invalid metadata; never borrow a different engine, disable checksums, or silently download an unrelated setup binary.
+- Record the pinned engine identity and manifest SHA-256 in the build identity and verify again after the exact source checkout.
+- Add offline fixtures for missing releases, digest mismatches, bad manifests, forbidden API responses and explicit-version behavior; run tests in Actions before the heavy source build.
+- Retain all six b1r2 launcher arguments, opt-out, portable Data behavior and pinned Package Builder/Publisher actions.
+- A metadata preflight cannot promise a downloadable ZIP or a successful Windows runtime; upstream fetch script still checks the actual archive SHA-256.
+
+# b1r1 — initial source builder, 2026-11-18
 
 - PORTABLEAPPS x64 only, not Native.
 - Upstream official Windows release resolver with exact tag, SHA and lockfile provenance.

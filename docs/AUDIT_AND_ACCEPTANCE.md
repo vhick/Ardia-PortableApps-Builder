@@ -1,4 +1,4 @@
-# Source audit, portability findings and acceptance — b1r2
+# Source audit, portability findings and acceptance — b1r3
 
 ## Sources inspected (Nov 18, 2026)
 
@@ -66,3 +66,14 @@ On a disposable Windows VM and brand-new Ardia profile:
 6. Check default-browser associations, crash reporting, logging and installed-browser coexistence separately, without deleting any host state.
 
 Evidence: **C++ UNIT-TESTED locally** for command-line assembly; **NOT YET VERIFIED** for actual Ardia switch support, Windows GUI, updater suppression, cross-device credential portability and security consequences.
+
+
+## b1r3 dependency availability and fallback acceptance
+
+- **SOURCE-INSPECTED (upstream):** Each source version ships `scripts/windows/engine/prebuilt.json` with a release tag, an x64 engine archive name and a SHA-256. `scripts/windows/fetch-engine.ps1` downloads the named archive with `gh release download` and verifies the archive hash before extraction.
+- **USER GITHUB LOG OBSERVATION (b1r2):** Windows source compilation passed; the engine fetch failed because upstream release `windows-engine-20261116-4` was not publicly accessible. This is not evidence about launcher or browser runtime.
+- **STATIC-VALIDATED (b1r3):** New resolver reads the manifest from the candidate's immutable source SHA and uses GitHub release/asset metadata to reject inaccessible engine releases before compilation. A later Windows source-check step verifies the local manifest hash and engine identity match preflight.
+- **OFFLINE-UNIT-TESTED:** Synthetic GitHub response fixtures exercise missing engine 404, fallback to an earlier official release, exact-version fail-closed, mismatched engine checksum, missing asset, malformed manifest path, GitHub 403, and channel preference.
+- **NOT YET VERIFIED:** The b1r3 workflow has not executed on GitHub Actions. Successful metadata lookup cannot guarantee actual network download of a large engine ZIP or its SHA-256. The unmodified upstream fetch script enforces the archive hash. GUI runtime, profile persistence, shell modifications and installer upgrade behavior remain manual Windows acceptance tasks.
+
+Suggested b1r3 acceptance steps: (1) Run `channel=nightly`, blank `version` and inspect the preflight log for skipped tags. (2) If none qualify, confirm the workflow stopped before `pnpm install` and C++/React Native compilation. (3) If one qualifies, confirm source commit and manifest SHA checks before build, followed by upstream engine ZIP hash verification. (4) Only after a validated ZIP and installer exist, run the original manual profile/session, restart, notification, installed-app coexistence and upgrade tests.

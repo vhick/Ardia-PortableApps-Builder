@@ -40,7 +40,7 @@ EULAVersion=1
 
 [Version]
 PackageVersion=$($id.package_version)
-DisplayVersion=$($id.version) Unofficial b1r2
+DisplayVersion=$($id.version) Unofficial b1r3
 
 [Control]
 Icons=1

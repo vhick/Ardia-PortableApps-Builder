@@ -1,16 +1,18 @@
 {
-  "kit_revision": "b1r2",
+  "kit_revision": "b1r3",
+  "evidence_timestamp_utc": "2026-11-18",
   "local_validation": {
-    "python_resolver_unit_tests": "PASS (4 tests)",
-    "workflow_yaml_parse": "PASS",
-    "file_structure_and_kit_archive": "PASS when ZIP generated",
-    "upstream_source_audit": "SOURCE-INSPECTED against live public sources",
-    "Windows_source_compilation": "NOT YET VERIFIED",
-    "Windows_launcher_compilation": "NOT YET VERIFIED",
-    "app_profile_runtime_portability": "NOT YET VERIFIED",
-    "installer_generation_and_execution": "NOT YET VERIFIED",
-    "release_publication": "NOT YET VERIFIED",
-    "cpp_default_argument_unit_tests": "PASS (Linux g++ -std=c++17 -Wall -Wextra -Werror; covers all six switches, order, duplicate protection, passthrough, opt-out)",
-    "flag_behavior_in_actual_ardia": "NOT YET VERIFIED; three experimental Ardia/Brave-specific switches may be ignored"
+    "python_resolver_and_preflight_unit_tests": "18 total PASS (offline synthetic GitHub API fixtures; 10 engine-specific scenarios)",
+    "workflow_yaml_parse": "PASS (local PyYAML static parser; not a GitHub Actions runner)",
+    "source_files_and_kit_zip": "PASS (SHA256SUMS.builder.txt verified after archive creation; ZIP CRC integrity tested)",
+    "prior_b1r2_windows_source_compilation": "PASS in user-provided GitHub Actions log; b1r2 engine fetch then FAILED",
+    "b1r3_windows_source_compilation": "NOT YET VERIFIED",
+    "b1r3_live_github_api_preflight": "NOT YET VERIFIED in a Windows Actions run",
+    "launcher_cpp_argument_tests": "PASS locally on Linux; b1r3 does not change launcher source",
+    "b1r3_installer_generation": "NOT YET VERIFIED",
+    "b1r3_release_publication": "NOT YET VERIFIED",
+    "manual_browser_profile_runtime": "NOT YET VERIFIED",
+    "traceguard_shellguard_and_notifications": "NOT YET VERIFIED; no speculative cleanup added",
+    "upstream_engine_assets_publicly_available": "At inspection, v0.2.47-nightly.5/.4/.3 engine release pages returned 404; cannot guarantee a buildable current release"
   }
 }
