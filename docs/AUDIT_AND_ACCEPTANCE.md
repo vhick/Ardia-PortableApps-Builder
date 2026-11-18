@@ -1,4 +1,4 @@
-# Source audit, portability findings and acceptance — b1r5
+# Source audit, portability findings and acceptance — b1r6
 
 ## Sources inspected (Nov 18, 2026)
 
@@ -22,7 +22,7 @@ Official upstream: `https://github.com/ardia-browser/ardia`; versioned Windows r
 | Stage | Status at kit creation |
 |---|---|
 | Source mechanisms and build chain | SOURCE-INSPECTED |
-| Python source resolver + integrity tests | STATIC-VALIDATED (31 tests) |
+| Python source resolver + integrity tests | STATIC-VALIDATED (36 tests) |
 | Kit ZIP integrity | STATIC-VALIDATED when generated |
 | Compiler / real root launcher in Windows | NOT YET VERIFIED |
 | Upstream source build | NOT YET VERIFIED |
@@ -72,17 +72,23 @@ Evidence: **C++ UNIT-TESTED locally** for command-line assembly; **NOT YET VERIF
 
 - **LOG-OBSERVED (b1r3):** All 18 resolver tests passed, then the engine dependency gate reported 404 for `windows-engine-20261116-4`, `windows-engine-20261116-2`, `windows-engine-20261115-7`. No application compilation or portable ZIP occurred in that run.
 - **SOURCE-INSPECTED:** An upstream exact-tag official Windows setup is available in versioned releases. The separate `windows-alpha` release moves forward and is not used as a source substitute.
-- **STATIC-VALIDATED (b1r5):** Resolver selects a public engine when possible, else only a verified official *same-tag* Windows setup with strict download URL, asset name, ID, SHA-256 digest and source SHA controls. Setup hash is verified before compilation. The original manifest hash is rechecked after checkout.
+- **STATIC-VALIDATED (b1r6):** Resolver selects a public engine when possible, else only a verified official *same-tag* Windows setup with strict download URL, asset name, ID, SHA-256 digest and source SHA controls. Setup hash is verified before compilation. The original manifest hash is rechecked after checkout.
 - **OFFLINE-TESTED:** Python fixture tests cover same-tag fallback, digest absence, wrong URL, foreign asset metadata, mismatched engine SHA, GitHub 403 and numeric version sorting. C++ launcher tests retained from b1r2.
 - **NOT YET VERIFIED:** Windows `7z`/Inno unattended extraction, exact Chromium file-version match, actual assembly, executable startup, notifications, process shutdown, shell and registry traces, ZIP installer behavior and release publication.
 - **CI SAFETY:** 7-Zip extraction is preferred; Inno silent `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /DIR=...` is a fallback limited to a temporary folder in a hosted runner (runner-only transient registrations may occur). No upstream setup program is executed on the user's computer. Test in a disposable VM before personal use.
 
-Suggested b1r5 steps: (1) Run `channel=nightly` with blank version. (2) Verify preflight chooses `official_setup` and the **GitHub-published setup SHA-256** matches the downloaded file before app compilation. (3) Review the engine extraction and Chromium-version step, then app assembly and headless dependency verifier. (4) Only use a resulting ZIP/installer after independent interactive profile, restart, notification and update tests.
+Suggested b1r6 steps: (1) Run `channel=nightly` with blank version. (2) Verify preflight chooses `official_setup` and the **GitHub-published setup SHA-256** matches the downloaded file before app compilation. (3) Review the engine extraction and Chromium-version step, then app assembly and headless dependency verifier. (4) Only use a resulting ZIP/installer after independent interactive profile, restart, notification and update tests.
 
-## b1r5 source-check regression acceptance
+## b1r6 source-check regression acceptance
 
 - **LOG-OBSERVED (b1r4):** Windows preflight resolved nightly.5 and the exact official setup fallback. Step 7 compared the Windows working-tree `prebuilt.json` SHA-256 `ad913cc115cafc7e7b2f5a681fb19796301153fa7e6137c7ba056639c0294960` with preflight blob SHA-256 `9c3ec2a097531903beef9e4de089527bdd496a988fe62e4ce295cc711ff303dd` and failed. No setup download or source build ran. Windows line-ending conversion is a plausible cause but not conclusively observed in the log.
-- **STATIC-VALIDATED (b1r5):** `scripts/verify-source-content.py` uses binary Git object content to validate original preflight SHA-256 and Git blob identity; only worktree CRLF/LF changes are permitted, while real content tampering and mismatched metadata remain fatal. Local regression fixtures test the acceptance and rejection behavior.
-- **NOT YET VERIFIED:** A real b1r5 Windows Action run that reaches the setup downloader, source compilation, assembly, installer and publication; interactive portability testing stays outstanding.
+- **STATIC-VALIDATED (b1r6):** `scripts/verify-source-content.py` uses binary Git object content to validate original preflight SHA-256 and Git blob identity; only worktree CRLF/LF changes are permitted, while real content tampering and mismatched metadata remain fatal. Local regression fixtures test the acceptance and rejection behavior.
+- **NOT YET VERIFIED:** A real b1r6 Windows Action run that reaches the setup downloader, source compilation, assembly, installer and publication; interactive portability testing stays outstanding.
 
-To check a b1r5 GitHub run, look for `SOURCE-INSPECTED: immutable engine manifest SHA-256 ... (worktree: line-ending-only)` in Step 7. `byte-identical` is also acceptable. If the immutable Git object hash itself differs, stop and inspect the chosen commit; do not bypass integrity protection.
+To check a b1r6 GitHub run, look for `SOURCE-INSPECTED: immutable engine manifest SHA-256 ... (worktree: line-ending-only)` in Step 7. `byte-identical` is also acceptable. If the immutable Git object hash itself differs, stop and inspect the chosen commit; do not bypass integrity protection.
+
+## b1r6 Windows MSVC preflight — log-grounded evidence
+
+- **LOG-OBSERVED (b1r5):** `logs_120043181553.zip` shows runner `windows-2025-vs2026 20261103.298.1`; resolver/integrity tests passed (31), immutable source manifest was verified, and SHA-256 of the original official x64 setup matched GitHub metadata. Step 10 failed at `scripts/test-launch-flags.ps1:7` because its `vswhere -requires` query did not identify an MSVC toolchain. No Ardia source compilation, Windows launcher compilation, ZIP, installer or release occurred in that run.
+- **STATIC-VALIDATED (b1r6):** Hosted runner changed from `windows-latest` to documented `windows-2022` with Visual Studio 2022 C++ tools. `scripts/msvc-tools.ps1` discovers a complete compiler across compatible VS installs. `scripts/verify-msvc.ps1` compiles and runs a minimal C++ smoke-test before the large setup download. Both the launcher argument tests and its real compiler use the same shared lookup.
+- **NOT YET VERIFIED:** Actual `windows-2022` toolchain preflight, source build, engine extraction, compiled launcher, portable browser ZIP, NSIS package, GitHub release and manual Windows portability behavior are pending a new Actions run. A static test is not a Windows compiler execution.

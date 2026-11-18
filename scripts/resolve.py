@@ -24,7 +24,7 @@ ENGINE_RELEASE = re.compile(r'^windows-engine-\d{8}-\d+$')
 ENGINE_ASSET = re.compile(r'^ardia-engine-win-x64(?:-[A-Za-z0-9._-]+)?\.zip$')
 HEX_SHA = re.compile(r'^[0-9a-f]{40}$')
 HEX256 = re.compile(r'^[0-9a-f]{64}$')
-REVISION = 'b1r5'
+REVISION = 'b1r6'
 
 
 def api(path: str, *, allow_404: bool = False):

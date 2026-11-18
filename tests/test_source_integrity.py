@@ -1,4 +1,4 @@
-"""Offline regression tests for b1r5 Windows Git checkout line-ending handling."""
+"""Offline regression tests for b1r6 Windows Git checkout line-ending handling."""
 import hashlib
 import importlib.util
 import json

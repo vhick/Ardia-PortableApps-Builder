@@ -1,3 +1,12 @@
+## b1r6 — Windows VS2022 MSVC detection correction
+
+- Inspect `logs_120043181553.zip`: immutable source verification and verified setup download pass; b1r5 fails before compilation because MSVC detection returned no installation on `windows-2025-vs2026`.
+- Pin Windows Server 2022 image with Visual Studio 2022 VC toolchain.
+- Add early `verify-msvc.ps1` toolchain probe before large downloads, with actual `cl.exe` on a minimal C++ fixture invocation.
+- Share `msvc-tools.ps1` discovery between the argument tests and launcher compilation; query VC-specific installs first and unfiltered VS installs second, requiring real `vcvars64.bat` plus x64 `cl.exe`.
+- Preserve same-tag source/Chromium verification, `Data\Ardia`, six experimental flags, and shared-action versions.
+- Status: local tests/static validation only; Windows b1r6 pipeline and browser operation not yet verified.
+
 # b1r5 — Git blob integrity vs Windows checkout line endings, 2026-11-19
 
 - Inspect user-provided b1r4 GitHub Actions log `logs_120033292406.zip`: 22 tests and same-tag setup preflight passed; source check failed at Step 7 because worktree SHA-256 differed from immutable preflight manifest SHA-256.
