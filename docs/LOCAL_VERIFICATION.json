@@ -1,0 +1,16 @@
+{
+  "kit_revision": "b1r2",
+  "local_validation": {
+    "python_resolver_unit_tests": "PASS (4 tests)",
+    "workflow_yaml_parse": "PASS",
+    "file_structure_and_kit_archive": "PASS when ZIP generated",
+    "upstream_source_audit": "SOURCE-INSPECTED against live public sources",
+    "Windows_source_compilation": "NOT YET VERIFIED",
+    "Windows_launcher_compilation": "NOT YET VERIFIED",
+    "app_profile_runtime_portability": "NOT YET VERIFIED",
+    "installer_generation_and_execution": "NOT YET VERIFIED",
+    "release_publication": "NOT YET VERIFIED",
+    "cpp_default_argument_unit_tests": "PASS (Linux g++ -std=c++17 -Wall -Wextra -Werror; covers all six switches, order, duplicate protection, passthrough, opt-out)",
+    "flag_behavior_in_actual_ardia": "NOT YET VERIFIED; three experimental Ardia/Brave-specific switches may be ignored"
+  }
+}

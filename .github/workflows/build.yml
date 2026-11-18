@@ -1,0 +1,179 @@
+name: Ardia PortableApps Source Builder
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional exact upstream tag, e.g. v0.2.47-nightly.3; blank resolves versioned Windows releases'
+        type: string
+        default: ''
+      channel:
+        description: 'Latest Windows x64 release channel; auto prefers stable if one exists, otherwise nightly'
+        type: choice
+        options: [auto, nightly, stable]
+        default: auto
+      publish:
+        description: 'Publish validated ZIP and installer in THIS builder repository'
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: ardia-portable-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 160
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+      ARDIA_CHANNEL: ${{ inputs.channel }}
+      ARDIA_VERSION: ${{ inputs.version }}
+    steps:
+      - name: Checkout standalone builder kit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify pinned shared action tag identities before integration
+        shell: pwsh
+        run: ./scripts/verify-actions.ps1
+      - name: Resolve versioned upstream Windows release
+        id: upstream
+        shell: pwsh
+        run: python scripts/resolve.py
+      - name: Check out exact upstream source tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ardia-browser/ardia
+          ref: ${{ steps.upstream.outputs.tag }}
+          path: upstream
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - name: Verify source SHA and lockfile identity
+        shell: pwsh
+        run: ./scripts/verify-upstream.ps1 -Identity work/identity.json
+      - name: Configure upstream Node.js toolchain
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Install upstream pinned pnpm and dependencies
+        working-directory: upstream
+        shell: pwsh
+        run: |
+          npm install --global pnpm@11.1.3 --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'pnpm installation failed' }
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'frozen dependency installation failed' }
+      - name: Compile real Ardia Windows application from source
+        working-directory: upstream/apps/browser
+        shell: pwsh
+        run: |
+          npx react-native run-windows --release --arch x64 --no-launch --no-deploy --no-packager --no-telemetry --logging
+          if ($LASTEXITCODE -ne 0) { throw "Upstream Windows source compilation failed ($LASTEXITCODE)" }
+          if (-not (Test-Path -LiteralPath 'windows/x64/Release/ArdiaApp.dll')) { throw 'No compiled ArdiaApp.dll' }
+      - name: Fetch verified upstream prebuilt Chromium engine
+        shell: pwsh
+        run: |
+          & ./upstream/scripts/windows/fetch-engine.ps1 -Cpu x64 -Out "$env:RUNNER_TEMP/ardia-engine"
+          if ($LASTEXITCODE -ne 0) { throw 'Engine download failed' }
+      - name: Assemble source-built Windows browser with its engine
+        shell: pwsh
+        run: |
+          $buildCount = (& git -C upstream rev-list --count HEAD | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not ($buildCount -match '^\d+$')) { throw 'Upstream build number unavailable' }
+          $id = Get-Content work/identity.json -Raw | ConvertFrom-Json
+          & ./upstream/scripts/windows/assemble.ps1 -App upstream/apps/browser/windows/x64/Release -Engine "$env:RUNNER_TEMP/ardia-engine" -Out "$env:RUNNER_TEMP/ardia-assembled" -Version $id.version -Build ([int]$buildCount)
+          if ($LASTEXITCODE -ne 0) { throw 'Ardia assembly failed' }
+      - name: Run upstream headless Windows dependency verifier
+        shell: pwsh
+        run: |
+          & ./upstream/scripts/windows/dependency-check.ps1 -App "$env:RUNNER_TEMP/ardia-assembled"
+          if ($LASTEXITCODE -ne 0) { throw 'Upstream Windows dependency validation failed' }
+      - name: Stage genuine PortableApps structure and original icons
+        shell: pwsh
+        run: ./scripts/stage.ps1 -App "$env:RUNNER_TEMP/ardia-assembled" -Stage "$env:GITHUB_WORKSPACE/staging" -Identity "$env:GITHUB_WORKSPACE/work/identity.json"
+      - name: Unit-test browser launch switches under Windows MSVC
+        shell: pwsh
+        run: ./scripts/test-launch-flags.ps1
+      - name: Compile the real C++ portable launcher
+        shell: pwsh
+        run: ./scripts/compile-launcher.ps1 -Source "$env:GITHUB_WORKSPACE/launcher/ArdiaPortable.cpp" -Output "$env:GITHUB_WORKSPACE/staging/ArdiaPortable/ArdiaPortable.exe"
+      - name: Validate local profile configuration without interactive GUI
+        shell: pwsh
+        run: |
+          & ./staging/ArdiaPortable/ArdiaPortable.exe --portable-healthcheck
+          if ($LASTEXITCODE -ne 0) { throw 'Portable launcher healthcheck failed' }
+          $check = Get-Content 'staging/ArdiaPortable/Data/Ardia/portable-launcher.check' -Raw
+          if (-not $check.Contains('portable-root-ok')) { throw 'Portable launcher did not create its own Data' }
+          Remove-Item 'staging/ArdiaPortable/Data/Ardia/portable-launcher.check' -Force
+      - name: Independently validate ZIP with file hashes and PE architecture
+        shell: pwsh
+        run: python scripts/validate.py staging/ArdiaPortable output
+      - name: Build independent PortableApps-style installer from validated stage
+        id: installer
+        uses: vhick/Portable-Package-Builder@v1.0.0
+        with:
+          source-dir: staging/ArdiaPortable
+          output-dir: output/installer
+          engine: custom-nsis
+          running-exe: App\Ardia\Ardia.exe
+          timeout-seconds: '900'
+          package-revision: b1r2
+      - name: Verify real installer PE and action-reported SHA-256
+        shell: pwsh
+        env:
+          INSTALLER: ${{ steps.installer.outputs.installer-file }}
+          INSTALLER_SHA: ${{ steps.installer.outputs.installer-sha256 }}
+        run: |
+          if (-not(Test-Path -LiteralPath $env:INSTALLER)){throw 'Installer file missing'}
+          $actual=(Get-FileHash -LiteralPath $env:INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:INSTALLER_SHA.ToLowerInvariant()){throw 'Installer SHA-256 mismatch'}
+          if (-not $env:INSTALLER.ToLowerInvariant().EndsWith('.paf.exe')){throw 'Not a PortableApps-style installer'}
+          Write-Host "STATIC-VALIDATED installer $env:INSTALLER $actual"
+      - name: Shared publisher dry run (no upload)
+        if: ${{ inputs.publish }}
+        uses: vhick/portable-release-publisher@v1.1.1
+        with:
+          files: |
+            output/*.zip
+            output/installer/*.paf.exe
+          tag: ${{ steps.upstream.outputs.release_tag }}
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r2)
+          tag-prefix: portable-
+          keep-releases: '3'
+          prune: 'false'
+          dry-run: 'true'
+      - name: Shared publisher release in calling repository
+        if: ${{ inputs.publish }}
+        uses: vhick/portable-release-publisher@v1.1.1
+        with:
+          files: |
+            output/*.zip
+            output/installer/*.paf.exe
+          tag: ${{ steps.upstream.outputs.release_tag }}
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r2)
+          tag-prefix: portable-
+          keep-releases: '3'
+          prune: 'false'
+          dry-run: 'false'
+      - name: Preserve validated ZIP if installer or publishing fails
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ardia-portable-zip-on-failure
+          path: output/*.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Validation evidence statement
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          @'
+          ## Portability verification boundaries
+          - Source compilation is checked when the source build step succeeds.
+          - PE layout, profile redirection healthcheck, ZIP checksum, and installer checksum are checked separately.
+          - GUI runtime, notifications, default-browser registration, update prompts, installed-app coexistence, crash recovery, and USB relocation are NOT proven by this headless workflow.
+          - Upstream Windows update behavior may require source patches before real-world portable use.
+          '@ >> $env:GITHUB_STEP_SUMMARY
