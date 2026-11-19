@@ -1,17 +1,36 @@
-# Ardia Windows Pre-release — PortableApps Builder Kit b1r3
+# Ardia Windows Pre-release — PortableApps Builder Kit b1r4
 
-### b1r3 fixes (19 November 2026)
+
+### Select launcher arguments with checkboxes (b1r4)
+
+When you click **Actions → Build Ardia Windows Pre-release PortableApps → Run workflow**, GitHub shows **seven independent on/off checkboxes**. Each controls whether an exact switch is compiled into the root `ArdiaPortable.exe`; no change to source code is needed. Checked means **pass the switch at every browser startup**; unchecked means **do not automatically pass it**. These are build-time choices. To change them later, build a NEW package and keep your existing `Data` folder.
+
+| Checkbox | Default | Meaning |
+|---|---|---|
+| `no_default_browser_check` | Checked | Default-browser prompt suppression |
+| `disable_background_mode` | Checked | Request to disable Chromium background mode; not an all-process shutdown guarantee |
+| `disable_logging` | Checked | Chromium logging switch; not a guarantee of no logs |
+| `disable_breakpad` | Checked | Chromium crash reporter switch; not a guarantee of zero crash artifacts |
+| `disable_machine_id` | Checked | **UNVERIFIED** on Ardia; may have no effect |
+| `disable_ardia_update` | Checked | **UNVERIFIED** on Ardia; does NOT prove the updater is disabled |
+| `disable_encryption_win` | **Unchecked** | **UNVERIFIED and NOT RECOMMENDED.** Could weaken credential protection if honored. Do not enable on a profile with real passwords/cookies. |
+
+After MSVC compilation, `scripts/verify_launcher_flags.py` checks the actual launcher PE for the enabled UTF-16 switch sequence and confirms unchecked switches are absent; this is static verification, not proof the browser honors them. The workflow uses GitHub's **typed Boolean inputs** (true checkbox controls, not text values). It generates both `launcher/launch_flags.h` before MSVC compilation and `work/launcher-options.json` (a canonical options record). The same validated fingerprint appears in the upstream build identity, ZIP filename, installer package revision, and GitHub release tag. As a result, two different checkbox combinations for the same Ardia commit do not collide. The final package includes `Other/Source/launcher-options.json` so you can inspect exactly which switches were selected. The separate **Packaging only** workflow deliberately DOES NOT have switches; it reuses the choices already compiled into the verified ZIP and must not pretend to change them.
+
+**Security caveat:** Optional extra command-line arguments passed manually to `ArdiaPortable.exe` still work, but may override behaviors. The launcher always protects the mandatory `--user-data-dir` setting. Turning a checkbox off does not force upstream to disable a feature; it only omits that switch. In particular, update prevention is not verified by source/runtime evidence.
+
+### Previous b1r3: Windows compiler and default argument fixes (19 November 2026)
 
 - Correct GitHub Actions Windows MSVC detection. The current `windows-2025` runner contains Visual Studio 2026, so the launcher compile step uses `vswhere.exe` to select installed `Visual Studio 18 2026` or supported 2022 fallback and confirms CMake knows the generator.
-- Add the requested launcher defaults: `--disable-ardia-update`, `--no-default-browser-check`, `--disable-logging`, `--disable-breakpad`, and `--disable-machine-id`. `--no-default-browser-check` was already present. These defaults are centralized in `launcher/launch_flags.h` for review.
+- Preserve the requested launcher defaults: `--disable-ardia-update`, `--no-default-browser-check`, `--disable-logging`, `--disable-breakpad`, and `--disable-machine-id`. `--no-default-browser-check` was already present. These defaults are centralized in `launcher/launch_flags.h` for review.
 - **`--disable-ardia-update` and `--disable-machine-id` are not confirmed to be recognized by Ardia 0.2.47-nightly.7 on Windows.** Passing an unrecognized switch is not proof of disabling anything. Ardia's published Windows alpha release provides Settings › General › Updates › Check Now. Do not enable in-app self-update for a portable copy.
-- **`--disable-encryption-win` is intentionally NOT included** in automatic defaults because it is unverified for this browser and risks breaking Windows-protected credentials if implemented. The launcher still supports explicit user command-line arguments, but disabling credentials is discouraged.
+- **`--disable-encryption-win` remains OFF by default** and is available only through an explicitly selected checkbox because it is unverified for this browser and risks breaking Windows-protected credentials if implemented. The launcher still supports explicit user command-line arguments, but disabling credentials is discouraged.
 - No change to `--user-data-dir`, `ARDIA_DATA_DIR`, data preservation, pinned packaging/publishing actions, or CI isolation.
 - **No update-blocking source patch is claimed.** Actual Windows browser update behavior must be runtime audited separately.
 
 
 
-### b1r3 fixes (19 November 2026)
+### Previous b1r2: CI fixture and hosted-runner safeguards (19 November 2026)
 
 - Fix the Windows CI safety unit test: explicitly remove GitHub runner variables in the off-runner fixture, instead of mistaking an actual CI runner for a local machine. This caused the `dummy` FileNotFoundError in b1r1.
 - Harden Inno extraction and installer smoke tests: require `RUNNER_ENVIRONMENT=github-hosted` as documented by GitHub; refuse self-hosted/private runner environments.
@@ -36,7 +55,7 @@
 
 ## Portable storage and host safety
 
-The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. The default command line is defined in `launcher/launch_flags.h`, with verified and unverified flags clearly marked. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
+The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. The automatic command line is generated into `launcher/launch_flags.h` from checked workflow options, with verified and unverified flags clearly marked. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
 
 **Critical limitation:** At the time of kit creation, Windows **actual runtime confirmation** that all Ardia-specific stores respect these settings is **not available**. Chromium's browser profile is directed to Data before initialization; browser-created OS notification caches, registered protocols, automatic updater processes and other non-Chromium stores may still touch Windows. The package does **not** claim total host cleanliness and does **not** run broad TraceGuard/ShellGuard cleanup against a potentially installed Ardia. Source-evidenced installer registrations are avoided because the user runs the extracted app, not the upstream installer; users should **not choose Make Default Browser** or enable native updates/autostart. Preserve all detected unknown host state pending attribution rather than deleting it.
 
@@ -47,7 +66,7 @@ The root launcher calculates its actual folder using `GetModuleFileNameW`. Befor
 1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
 2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
 3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
-4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r3`**. Push via **Push origin**.
+4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r4`**. Push via **Push origin**.
 5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
 6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
 7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.
@@ -75,6 +94,8 @@ Using a disposable Windows test account **without important pre-existing browser
 - `.github/workflows/build.yml` — single-job official prerelease acquisition → genuine MSVC launcher → staging → ZIP → pinned installer → dry-run and publish.
 - `.github/workflows/package-only.yml` — verifies source ZIP and checksum then builds another `.paf.exe`.
 - `launcher/main.cpp`, `CMakeLists.txt`, `resource.rc` — real native launcher implementation; compiled per requested CPU.
+- `scripts/verify_launcher_flags.py` — confirms the compiled Windows launcher contains selected options and excludes unchecked options (static only).
+- `scripts/launcher_options.py` — checked-option to fixed switch allowlist, generated C++ header, manifest and stable SHA-256 option variant.
 - `scripts/release.py` — GitHub release/version/source/lockfile attestation, Windows-only runner extraction, assembly, validation, ZIP and hashes.
 - `scripts/make-icons.ps1` — derives PNG icons from official upstream ICO.
 - `scripts/verify-installer.ps1` — checks `.paf.exe` PE structure and SHA.

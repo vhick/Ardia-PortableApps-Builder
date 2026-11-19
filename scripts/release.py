@@ -17,10 +17,14 @@ import time
 from urllib import request, error, parse
 import zipfile
 
+# Same-directory helper is used both by the CLI and the independent fixture tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import launcher_options
+
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (source-attested Windows pre-release packaging)'
-REVISION = 'b1r3'
+REVISION = 'b1r4'
 
 
 def die(s):
@@ -90,6 +94,7 @@ def resolve(args):
     if not commit.startswith(prefix.lower()): die('Source commit mismatch')
     version_commit = japi('/commits/v' + version, token)['sha']
     if version_commit != commit: die('Windows release binary version differs from source tag commit; aborting')
+    options = launcher_options.load_manifest(args.launcher_options)
     arch = args.arch
     asset_name = 'Ardia-Setup-' + arch + '.exe'
     assets = [a for a in data.get('assets', []) if a.get('name') == asset_name]
@@ -105,8 +110,9 @@ def resolve(args):
               'asset_id': asset['id'], 'asset_size': asset['size'],
               'asset_api_digest': asset.get('digest') or '',
               'source_lock_git_blob_sha': lock_sha, 'package_revision': REVISION,
+              'launcher_options': options, 'launcher_flags_fingerprint': options['fingerprint'],
               'builder_repository_commit': os.environ.get('GITHUB_SHA', 'local-unverified'),
-              'release_tag_for_builder': 'portable-ardia-' + version + '-' + arch + '-' + commit[:12] + '-' + REVISION,
+              'release_tag_for_builder': 'portable-ardia-' + version + '-' + arch + '-' + commit[:12] + '-' + REVISION + '-f' + options['fingerprint'],
               'source_method': 'Official developer Windows pre-release Inno Setup installer; copied from isolated CI installation'}
     writejson(args.identity, actual)
     print('Resolved official Windows pre-release:', version, 'commit', commit, arch)
@@ -244,12 +250,19 @@ Start=ArdiaPortable.exe
     (info / 'appinfo.ini').write_text(appinfo, encoding='utf-8')
     meta['upstream_app_exe_sha256'] = sha256(app / 'Ardia.exe')
     meta['launcher_sha256'] = sha256(root / 'ArdiaPortable.exe')
+    launcher_opts = meta.get('launcher_options')
+    if meta['package_revision'] == REVISION:
+        launcher_options.validate_manifest(launcher_opts)
+        if meta['launcher_flags_fingerprint'] != launcher_opts['fingerprint']:
+            die('Launcher options fingerprint differs from identity')
     # Keep source attribution in final package.
     source_files = ['LICENSE', 'LICENSE.Apache-2.0', 'NOTICE']
     for filename in source_files:
         url = f'https://raw.githubusercontent.com/{REPO}/{meta["source_commit"]}/{filename}'
         fetch(url, root / 'Other' / 'Source' / filename)
     writejson(args.identity, meta)
+    if launcher_opts:
+        writejson(root / 'Other' / 'Source' / 'launcher-options.json', launcher_opts)
     shutil.copy2(args.identity, root / 'Other' / 'Source' / 'build-identity.json')
     (root / 'README.txt').write_text(
         'Ardia Portable (Unofficial)\n'
@@ -260,6 +273,13 @@ Start=ArdiaPortable.exe
         'Browser crashes, Windows notification caches, OS history, downloads and user-approved\n'
         'default-browser registrations may still leave host traces.\n'
         'See Other\\Source and the kit documentation for licenses and limits.\n', encoding='utf-8')
+    if launcher_opts:
+        with (root / 'README.txt').open('a', encoding='utf-8') as f:
+            f.write('Launcher flags fixed at package build time (change checkboxes and rebuild):\n')
+            for arg in launcher_opts['enabled_arguments']:
+                f.write('  ' + arg + '\n')
+            f.write('Options fingerprint: ' + launcher_opts['fingerprint'] + '\n')
+            f.write('Updater and machine-ID switches are unverified; encryption switch may reduce protection.\n')
     print('Staged', root)
 
 
@@ -272,6 +292,13 @@ def validate(args):
             'Other/Source/LICENSE', 'Other/Source/NOTICE', 'Other/Source/build-identity.json']
     for rel in must:
         if not (root / rel).exists(): die('Missing required staged path: ' + rel)
+    if meta.get('package_revision') == REVISION:
+        actual_options = launcher_options.validate_manifest(meta.get('launcher_options'))
+        if meta.get('launcher_flags_fingerprint') != actual_options['fingerprint']:
+            die('Launcher options identity hash mismatch')
+        options_file = root / 'Other' / 'Source' / 'launcher-options.json'
+        if launcher_options.load_manifest(options_file) != actual_options:
+            die('Portable launcher options manifest differs from package identity')
     for filename in ['ArdiaPortable.exe', 'App/Ardia/Ardia.exe']:
         if pe_machine(root / filename) != {'x64': 0x8664, 'arm64': 0xAA64}[meta['arch']]:
             die('Wrong PE machine: ' + filename)
@@ -312,7 +339,7 @@ def makezip(args):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
-    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--version', default='')
+    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--version', default=''); r.add_argument('--launcher-options', required=True)
     a = sub.add_parser('acquire'); a.add_argument('--identity', required=True); a.add_argument('--out', required=True)
     i = sub.add_parser('install-ci'); i.add_argument('--identity', required=True); i.add_argument('--installer', required=True); i.add_argument('--out', required=True)
     s = sub.add_parser('stage'); s.add_argument('--identity', required=True); s.add_argument('--install', required=True); s.add_argument('--launcher', required=True); s.add_argument('--out', required=True)

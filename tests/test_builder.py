@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('release', ROOT / 'scripts' / 'release.py')
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
+import launcher_options as opts
 
 class BuilderTests(unittest.TestCase):
     def test_semver_prerelease_pattern(self):
@@ -85,6 +86,168 @@ class BuilderTests(unittest.TestCase):
             self.assertIn('L" ' + sw + '"', flags) if sw != '--disable-ardia-update' else self.assertIn('L" ' + sw + '";', flags)
         self.assertEqual(flags.count('L" --no-default-browser-check"'), 1)
         self.assertNotIn('L" --disable-encryption-win"', flags)
+
+    def test_default_option_manifest_matches_checked_workflow_defaults(self):
+        import re
+        source = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
+        block = source.split('    inputs:', 1)[1].split('permissions:', 1)[0]
+        for key, _switch, default, _status in opts.FLAGS:
+            pattern = (r'(?m)^      ' + re.escape(key) +
+                       r':\n        description:.*\n        type: boolean\n        default: (true|false)$')
+            m = re.search(pattern, block)
+            self.assertIsNotNone(m, key)
+            self.assertEqual(m.group(1), 'true' if default else 'false')
+        self.assertEqual(block.count('        type: boolean'), 8)
+
+    def test_flags_combinations_compile_to_exact_allowlisted_strings(self):
+        for key, switch, default, _status in opts.FLAGS:
+            selections = dict(opts.DEFAULTS)
+            selections[key] = not default
+            manifest = opts.manifest_for(selections)
+            header = opts.header_for(manifest)
+            self.assertEqual(switch in manifest['enabled_arguments'], not default)
+            self.assertEqual(('L" ' + switch + '"') in header, not default)
+            self.assertTrue(header.strip().endswith(';'))
+            self.assertNotEqual(manifest['fingerprint'], opts.manifest_for(opts.DEFAULTS)['fingerprint'])
+
+    def test_fully_disabled_options_have_valid_empty_cpp_literal(self):
+        data = opts.manifest_for({key: False for key in opts.KEYS})
+        self.assertEqual(data['enabled_arguments'], [])
+        self.assertIn('    L"";', opts.header_for(data))
+
+    def test_unsafe_input_never_becomes_a_compiler_flag(self):
+        self.assertRaises(ValueError, opts.manifest_for, {'arbitrary': True})
+        self.assertRaises(ValueError, opts.parse_bool, 'true --bad', 'disable_logging')
+        self.assertRaises(ValueError, opts.manifest_for, {k: 'true' for k in opts.KEYS})
+
+    def test_tampered_option_manifest_is_rejected(self):
+        data = opts.manifest_for(opts.DEFAULTS)
+        data['enabled_arguments'].append('--not-allowed')
+        with self.assertRaisesRegex(ValueError, 'mismatch'):
+            opts.validate_manifest(data)
+        data = opts.manifest_for(opts.DEFAULTS)
+        data['fingerprint'] = '0'*12
+        with self.assertRaisesRegex(ValueError, 'mismatch'):
+            opts.validate_manifest(data)
+
+    def test_environment_boolean_parsing_respects_gitHub_values(self):
+        import copy
+        env = {'ARDIA_OPT_DISABLE_BREAKPAD': 'false',
+               'ARDIA_OPT_DISABLE_ENCRYPTION_WIN': 'true'}
+        selected = opts.from_environment(env)
+        self.assertFalse(selected['disable_breakpad'])
+        self.assertTrue(selected['disable_encryption_win'])
+        self.assertTrue(selected['no_default_browser_check'])
+
+    def test_generated_header_and_manifest_share_identity(self):
+        with tempfile.TemporaryDirectory() as t:
+            manifest = Path(t)/'opts.json'
+            header = Path(t)/'flags.h'
+            env = dict(os.environ, ARDIA_OPT_DISABLE_ARDIA_UPDATE='false',
+                       ARDIA_OPT_DISABLE_LOGGING='false')
+            out = subprocess.run([sys.executable, str(ROOT/'scripts/launcher_options.py'),
+                                  '--out', str(manifest), '--header', str(header)],
+                                 env=env, capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            data = opts.load_manifest(manifest)
+            self.assertNotIn('--disable-logging', data['enabled_arguments'])
+            self.assertNotIn('L" --disable-logging"', header.read_text())
+            self.assertEqual(header.read_text(), opts.header_for(data))
+
+    def test_workflow_flags_are_generated_before_compilation(self):
+        workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
+        self.assertLess(workflow.index('python scripts/launcher_options.py'),
+                        workflow.index('cmake -S launcher'))
+        self.assertIn(' --launcher-options work/launcher-options.json', workflow)
+        self.assertIn('b1r4_f$($env:PKG_OPTIONS_ID).zip', workflow)
+        self.assertIn('package-revision: b1r4-f${{ env.PKG_OPTIONS_ID }}', workflow)
+        self.assertIn('PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)', workflow)
+        self.assertEqual(workflow.count('type: boolean'), 8)
+
+    def test_packaging_only_reuses_existing_compiled_switches(self):
+        text = (ROOT/'.github/workflows/package-only.yml').read_text()
+        self.assertNotIn('ARDIA_OPT_', text)
+        self.assertNotIn('launcher_options.py', text)
+        self.assertIn('verify-existing-zip.py', text)
+
+    def test_distinct_checkbox_combinations_create_distinct_release_tags(self):
+        import argparse
+        fake_commit = 'abcdef1234567890abcdef1234567890abcdef12'
+        base = {'body': 'Ardia 0.2.47-nightly.7 for Windows, build 7661 (commit `abcdef1`)',
+                'draft': False, 'prerelease': True,
+                'assets': [{'name': 'Ardia-Setup-x64.exe', 'size': 32000000,
+                            'browser_download_url': 'https://github.com/ardia-browser/ardia/releases/download/windows-alpha/Ardia-Setup-x64.exe',
+                            'id': 123456}]}
+        def fake_api(endpoint, token):
+            if endpoint == '/releases/tags/windows-alpha': return base
+            if endpoint == '/commits/abcdef1': return {'sha': fake_commit}
+            if endpoint == '/commits/v0.2.47-nightly.7': return {'sha': fake_commit}
+            if endpoint.startswith('/contents/pnpm-lock.yaml?ref='): return {'sha': 'f'*40}
+            raise AssertionError('unexpected ' + endpoint)
+        with tempfile.TemporaryDirectory() as d, patch.object(r, 'japi', side_effect=fake_api):
+            results=[]
+            for enable in (True, False):
+                selections = dict(opts.DEFAULTS)
+                selections['disable_logging'] = enable
+                manifest = opts.manifest_for(selections)
+                options_file = Path(d, 'flags.json')
+                options_file.write_text(json.dumps(manifest), encoding='utf-8')
+                identity_file = Path(d, 'identity.json')
+                r.resolve(argparse.Namespace(launcher_options=str(options_file), identity=str(identity_file), arch='x64', version=''))
+                identity = json.loads(identity_file.read_text(encoding='utf-8'))
+                self.assertEqual(identity['launcher_options'], manifest)
+                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r4-f' + manifest['fingerprint']))
+                results.append(identity['release_tag_for_builder'])
+            self.assertNotEqual(results[0], results[1])
+
+    def test_staged_manifest_must_match_identity(self):
+        import argparse
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d,'ArdiaPortable')
+            required=['ArdiaPortable.exe', 'App/AppInfo/appinfo.ini', 'App/AppInfo/appicon.ico',
+                      'App/AppInfo/appicon_16.png', 'App/AppInfo/appicon_32.png',
+                      'App/Ardia/Ardia.exe','App/Ardia/chrome.dll','Other/Source/LICENSE',
+                      'Other/Source/NOTICE','Other/Source/build-identity.json']
+            for rel in required:
+                file = root/rel
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b'MZ')
+            (root/'Data/Profile').mkdir(parents=True)
+            (root/'App/AppInfo/appinfo.ini').write_text('[Details]\nAppID=ArdiaBrowserPortableCommunity\n[Control]\nStart=ArdiaPortable.exe\n')
+            manifest = opts.manifest_for(opts.DEFAULTS)
+            meta = {'arch': 'x64', 'package_revision': 'b1r4', 'launcher_options': manifest,
+                    'launcher_flags_fingerprint': manifest['fingerprint'],
+                    'upstream_app_exe_sha256': r.sha256(root/'App/Ardia/Ardia.exe'),
+                    'launcher_sha256': r.sha256(root/'ArdiaPortable.exe')}
+            identity = Path(d,'identity.json'); identity.write_text(json.dumps(meta))
+            (root/'Other/Source/launcher-options.json').write_text(json.dumps(manifest))
+            with patch.object(r,'pe_machine',return_value=0x8664):
+                r.validate(argparse.Namespace(identity=str(identity),root=str(root)))
+                broken = dict(manifest)
+                broken['fingerprint']='b'*12
+                (root/'Other/Source/launcher-options.json').write_text(json.dumps(broken))
+                with self.assertRaisesRegex(ValueError, 'mismatch'):
+                    r.validate(argparse.Namespace(identity=str(identity),root=str(root)))
+
+    def test_compiled_binary_flag_fixture_verification(self):
+        import verify_launcher_flags as verifier
+        with tempfile.TemporaryDirectory() as d:
+            selection = dict(opts.DEFAULTS)
+            selection['disable_ardia_update'] = False
+            selection['disable_machine_id'] = False
+            manifest = opts.manifest_for(selection)
+            flags_json = Path(d, 'flags.json')
+            flags_json.write_text(json.dumps(manifest), encoding='utf-8')
+            good = Path(d, 'launcher.exe')
+            wide = ''.join(' ' + arg for arg in manifest['enabled_arguments']).encode('utf-16le')
+            good.write_bytes(b'MZ' + bytes(200) + wide + bytes(12))
+            verifier.check(good, flags_json)
+            good.write_bytes(b'MZ' + bytes(200) + wide + ' --disable-machine-id'.encode('utf-16le'))
+            with self.assertRaisesRegex(ValueError, 'disabled flag'):
+                verifier.check(good, flags_json)
+            good.write_bytes(b'MZ' + bytes(200) + b'no flags')
+            with self.assertRaisesRegex(ValueError, 'selected UTF-16'):
+                verifier.check(good, flags_json)
 
     def test_windows_workflow_chooses_existing_compiler(self):
         workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')

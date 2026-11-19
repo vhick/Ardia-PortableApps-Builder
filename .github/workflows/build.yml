@@ -11,6 +11,34 @@ on:
         description: Optional exact nightly version currently published as Windows alpha (blank = current)
         type: string
         default: ''
+      no_default_browser_check:
+        description: 'Include --no-default-browser-check (recommended)'
+        type: boolean
+        default: true
+      disable_background_mode:
+        description: 'Include --disable-background-mode (recommended)'
+        type: boolean
+        default: true
+      disable_logging:
+        description: 'Include --disable-logging'
+        type: boolean
+        default: true
+      disable_breakpad:
+        description: 'Include --disable-breakpad'
+        type: boolean
+        default: true
+      disable_machine_id:
+        description: 'Include --disable-machine-id (UNVERIFIED for Ardia)'
+        type: boolean
+        default: true
+      disable_ardia_update:
+        description: 'Include --disable-ardia-update (UNVERIFIED; may do nothing)'
+        type: boolean
+        default: true
+      disable_encryption_win:
+        description: 'Include --disable-encryption-win (UNVERIFIED; credential risk; default OFF)'
+        type: boolean
+        default: false
       publish:
         description: Publish validated ZIP and PortableApps-style installer to this builder's Releases
         type: boolean
@@ -38,17 +66,33 @@ jobs:
           python-version: '3.12'
       - name: Unit tests (no browser GUI claims)
         run: python -m unittest discover -s tests -v
+      - name: Generate compiled launcher flags from checked workflow options
+        env:
+          ARDIA_OPT_NO_DEFAULT_BROWSER_CHECK: ${{ inputs.no_default_browser_check }}
+          ARDIA_OPT_DISABLE_BACKGROUND_MODE: ${{ inputs.disable_background_mode }}
+          ARDIA_OPT_DISABLE_LOGGING: ${{ inputs.disable_logging }}
+          ARDIA_OPT_DISABLE_BREAKPAD: ${{ inputs.disable_breakpad }}
+          ARDIA_OPT_DISABLE_MACHINE_ID: ${{ inputs.disable_machine_id }}
+          ARDIA_OPT_DISABLE_ARDIA_UPDATE: ${{ inputs.disable_ardia_update }}
+          ARDIA_OPT_DISABLE_ENCRYPTION_WIN: ${{ inputs.disable_encryption_win }}
+        run: |
+          python scripts/launcher_options.py --out work/launcher-options.json --header launcher/launch_flags.h
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher option generation failed' }
+          $options = Get-Content -LiteralPath work/launcher-options.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          "Ardia launcher options fingerprint: $($options.fingerprint)" >> $env:GITHUB_STEP_SUMMARY
+          "Enabled arguments (not all are verified by Ardia): $($options.enabled_arguments -join ', ')" >> $env:GITHUB_STEP_SUMMARY
       - name: Resolve immutable source identity from official Windows alpha release
         env:
           ARCH: ${{ inputs.architecture }}
           REQUEST_VERSION: ${{ inputs.requested_version }}
         run: |
-          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --identity work/identity.json
+          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --launcher-options work/launcher-options.json --identity work/identity.json
           if ($LASTEXITCODE -ne 0) { throw 'Release resolver failed' }
           $m = Get-Content -LiteralPath work/identity.json -Raw -Encoding UTF8 | ConvertFrom-Json
           "PKG_VERSION=$($m.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_TAG=$($m.release_tag_for_builder)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_ARCH=$($m.arch)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Refuse duplicate builder release identity before large downloads
         if: ${{ inputs.publish }}
         run: |
@@ -93,6 +137,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
           $exe = 'build/launcher/Release/ArdiaPortable.exe'
           if (!(Test-Path -LiteralPath $exe)) { throw 'Missing genuine compiled launcher' }
+      - name: Verify compiled PE contains selected switches and excludes unchecked switches
+        run: |
+          python scripts/verify_launcher_flags.py --exe build/launcher/Release/ArdiaPortable.exe --manifest work/launcher-options.json
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled launcher switch selection differs from workflow checkboxes' }
       - name: Stage ArdiaPortable with separate Data and licensing
         run: |
           python scripts/release.py stage --identity work/identity.json --install "$env:RUNNER_TEMP/Ardia-Portable-Extraction" --launcher build/launcher/Release/ArdiaPortable.exe --out work/ArdiaPortable
@@ -103,7 +151,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r3.zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r4_f$($env:PKG_OPTIONS_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -116,7 +164,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r3
+          package-revision: b1r4-f${{ env.PKG_OPTIONS_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -136,7 +184,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r3 (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r4 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -148,7 +196,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r3 (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r4 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'
