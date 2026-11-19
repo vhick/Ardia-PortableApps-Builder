@@ -20,7 +20,7 @@ import zipfile
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (source-attested Windows pre-release packaging)'
-REVISION = 'b1r1'
+REVISION = 'b1r2'
 
 
 def die(s):
@@ -149,10 +149,23 @@ def acquire(args):
     print('Downloaded', path, 'SHA256', digest, src['digest_attestation'])
 
 
+def assert_hosted_windows_ci():
+    """Reject destructive installer invocation off an ephemeral GitHub-hosted Windows runner.
+
+    Check BEFORE reading user-supplied identity/installer paths. The explicit hosted
+    requirement rejects self-hosted runners, including personal Windows workstations
+    registered with GitHub Actions.
+    """
+    if (os.name != 'nt'
+            or os.environ.get('GITHUB_ACTIONS') != 'true'
+            or os.environ.get('RUNNER_OS') != 'Windows'
+            or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'
+            or not os.environ.get('RUNNER_TEMP')):
+        die('Refusing upstream installer: requires an ephemeral GitHub-hosted Windows runner')
+
+
 def install_in_isolated_ci(args):
-    if os.name != 'nt': die('This operation requires the disposable Windows GitHub Actions runner')
-    if not os.environ.get('GITHUB_ACTIONS') or os.environ.get('RUNNER_OS') != 'Windows':
-        die('For host protection, never run this builder install step on a personal Windows computer')
+    assert_hosted_windows_ci()
     meta = json.loads(Path(args.identity).read_text(encoding='utf-8'))
     installer = Path(args.installer).resolve()
     if sha256(installer) != meta['download_sha256']: die('Installer changed after hash verification')

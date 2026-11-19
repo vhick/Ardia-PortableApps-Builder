@@ -1,4 +1,4 @@
-# Ardia Windows prerelease b1r1 — source/host/storage findings (2026-11-19)
+# Ardia Windows prerelease b1r2 — source/host/storage findings (2026-11-19)
 
 ## Source evidence examined
 
@@ -57,3 +57,7 @@ The current kit contains source/build automation, **not** an already compiled co
 ## Strict input contract limitation (not satisfied)
 
 This implementation acquires real official Ardia **pre-release Inno installer binaries** instead of compiling Chromium from source or obtaining a genuine official upstream **portable** release. An installer asset cannot be relabeled as an upstream portable release. The isolated Windows CI installation is an extraction technique only, not proof of runtime portable behavior. Full compliance with the user's requested upstream-binary provenance contract is **BLOCKED / NOT YET VERIFIED** until a source-compiled path or verified official developer portable asset is available. This builder kit is a usable, source-audited candidate implementation, **not** a fully validated product. No broad TraceGuard or ShellGuard has been implemented, pending evidence-based runtime mapping.
+
+
+### b1r2 validation regression fix
+GitHub Actions sets GITHUB_ACTIONS and RUNNER_OS for the unit-test step, so tests must explicitly clear these values when simulating a non-CI system. The isolated installer path now additionally rejects self-hosted runners by requiring RUNNER_ENVIRONMENT=github-hosted. As of authoring, actual Windows compilation, installer execution, and interactive portability are not yet verified for b1r2.

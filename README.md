@@ -1,4 +1,12 @@
-# Ardia Windows Pre-release — PortableApps Builder Kit b1r1
+# Ardia Windows Pre-release — PortableApps Builder Kit b1r2
+
+
+### b1r2 fixes (19 November 2026)
+
+- Fix the Windows CI safety unit test: explicitly remove GitHub runner variables in the off-runner fixture, instead of mistaking an actual CI runner for a local machine. This caused the `dummy` FileNotFoundError in b1r1.
+- Harden Inno extraction and installer smoke tests: require `RUNNER_ENVIRONMENT=github-hosted` as documented by GitHub; refuse self-hosted/private runner environments.
+- Add regression tests for the self-hosted case and missing hosted-runner marker. Preserve the original application, launcher, installer engine and publisher wiring.
+- No real browser runtime claims: repeat GitHub Actions Windows build and interactive acceptance tests.
 
 **Selected mode: PORTABLEAPPS only**. Builds `ArdiaPortable.exe` as a **real C++/MSVC PE**, supplies `App/Ardia`, `Data/Profile`, PortableApps metadata and upstream icons, creates a ready-to-extract ZIP, invokes the separately pinned shared PortableApps-style NSIS installer, then invokes the separately pinned release publisher twice (dry-run and actual publish).
 
@@ -29,7 +37,7 @@ The root launcher calculates its actual folder using `GetModuleFileNameW`. Befor
 1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
 2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
 3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
-4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r1`**. Push via **Push origin**.
+4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r2`**. Push via **Push origin**.
 5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
 6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
 7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.

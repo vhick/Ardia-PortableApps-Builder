@@ -2,7 +2,7 @@
 # Tests packaged NSIS installer /S and /D semantics from pinned custom-nsis engine.
 param([Parameter(Mandatory=$true)][string]$Installer)
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') { throw 'Installer test is GitHub-hosted Windows runner only' }
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Installer test is GitHub-hosted Windows runner only' }
 $resolved = (Resolve-Path -LiteralPath $Installer).Path
 $dest = Join-Path $env:RUNNER_TEMP 'ArdiaPortable-Paf-InstallerTest'
 if (Test-Path -LiteralPath $dest) { throw 'Refusing nonfresh isolated installer test destination' }
