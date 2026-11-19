@@ -17,6 +17,7 @@ import sys
 import urllib.error
 import urllib.request
 from urllib.parse import quote
+from pathlib import Path
 
 API = 'https://api.github.com/repos/ardia-browser/ardia'
 TAG = re.compile(r'^v(?P<ver>\d+\.\d+\.\d+)(?:-nightly\.(?P<night>\d+))?$')
@@ -24,7 +25,7 @@ ENGINE_RELEASE = re.compile(r'^windows-engine-\d{8}-\d+$')
 ENGINE_ASSET = re.compile(r'^ardia-engine-win-x64(?:-[A-Za-z0-9._-]+)?\.zip$')
 HEX_SHA = re.compile(r'^[0-9a-f]{40}$')
 HEX256 = re.compile(r'^[0-9a-f]{64}$')
-REVISION = 'b1r7'
+REVISION = (Path(__file__).resolve().parents[1] / 'BUILDER_REVISION').read_text(encoding='utf-8').strip()
 
 
 def api(path: str, *, allow_404: bool = False):

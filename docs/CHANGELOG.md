@@ -1,3 +1,12 @@
+## b1r9 — detect mixed-version kits before tests and eliminate hardcoded unit-test revision
+
+- **LOG-OBSERVED (b1r8 workflow, logs_120282255983.zip):** 41 tests ran, 39 passed, 2 failed at Step 4. The GitHub checkout used `tests/test_local.py` that expected `b1r7`, while the workflow/installer were `b1r8`. No compiler/setup/source build or portable packaging occurred in that run.
+- **SOURCE-INSPECTED (downloadable b1r8 ZIP):** bundled `tests/test_local.py` actually expects `b1r8`; the checked-out repository had a stale test file, consistent with an incomplete overwrite or an old commit. The logs alone do not reveal how that file was retained.
+- Add canonical root `BUILDER_REVISION` and make resolver + test expectations read it; check workflow, stage, README and test-file versions before any unit tests.
+- Add four local regression fixtures for good state, stale version, mismatched installer version and missing `.github` workflow.
+- Preserve b1r8 Windows MSVC fallback implementation, all six browser flags, portable Data routing, same-tag SHA-256 setup fallback and pinned shared actions.
+- No Windows b1r9 compiler execution or GUI acceptance is claimed.
+
 ## b1r8 — diagnose MSVC setup exit 21, use isolated VsDevCmd/vcvars64 fallback
 
 - Inspect b1r7 GitHub Actions log `logs_120277176694.zip`: 38 Python tests and real CMD quoting regression passed; VS2022 found; `vcvars64.bat` returned nonzero (mapped to 21), with errors suppressed by the prior script. No compiler run.

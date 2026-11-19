@@ -38,6 +38,9 @@ jobs:
       - name: Verify pinned shared action tag identities before integration
         shell: pwsh
         run: ./scripts/verify-actions.ps1
+      - name: Check builder kit revision consistency BEFORE tests
+        shell: pwsh
+        run: python scripts/check-builder-revision.py
       - name: Test resolver and engine fallback offline (no network)
         shell: pwsh
         run: python -m unittest discover -s tests -v
@@ -144,7 +147,7 @@ jobs:
           engine: custom-nsis
           running-exe: App\Ardia\Ardia.exe
           timeout-seconds: '900'
-          package-revision: b1r8
+          package-revision: b1r9
       - name: Verify real installer PE and action-reported SHA-256
         shell: pwsh
         env:
@@ -164,7 +167,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r8)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r9)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -177,7 +180,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r8)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r9)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'

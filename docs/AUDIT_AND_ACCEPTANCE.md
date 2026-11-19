@@ -1,3 +1,10 @@
+## b1r9 mixed-version checkout acceptance
+
+- **LOG-OBSERVED (b1r8 GitHub run):** Step 4 ran 41 Python tests: 39 passed, 2 failed. `tests/test_local.py` still asserted `b1r7` against a `b1r8` workflow. The first failure occurred before the Windows MSVC fixture or application compilation.
+- **SOURCE-INSPECTED (b1r8 distribution ZIP):** The distributed kit already expected `b1r8`. A GitHub checkout did not have the same test file as the ZIP. Root cause of the incomplete upgrade is not independently verified.
+- **STATIC-VALIDATED (b1r9):** Before test discovery, `scripts/check-builder-revision.py` checks `BUILDER_REVISION` against workflow installer revision, release titles, resolver, staging, README, metadata and tests. Controlled fixtures reject stale b1r7 test files, wrong installer revision and missing workflow.
+- **NEXT WINDOWS CHECK:** The first new step must report `STATIC-VALIDATED: b1r9 builder revision is consistent...`, then all Python tests pass, followed by the batch-quoting and MSVC fallback tests. No browser or installer runtime verification is implied by these checks.
+
 ## b1r8 Windows MSVC initialization acceptance
 
 - In CI, "Verify CMD batch quoting" should pass as it did in the b1r7 run.

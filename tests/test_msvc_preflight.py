@@ -67,7 +67,8 @@ class MsvcIntegrationTests(unittest.TestCase):
         self.assertIn('fixtures only',fixture)
     def test_revision_bumped_without_changes_to_upstream_pins(self):
         w=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf8')
-        self.assertIn('package-revision: b1r8',w)
+        revision=(ROOT/'BUILDER_REVISION').read_text(encoding='utf8').strip()
+        self.assertIn(f'package-revision: {revision}',w)
         self.assertIn('vhick/Portable-Package-Builder@v1.0.0',w)
         self.assertIn('vhick/portable-release-publisher@v1.1.1',w)
     def test_no_change_to_launcher_flags_or_profile(self):

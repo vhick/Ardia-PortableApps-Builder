@@ -1,4 +1,12 @@
-# Ardia PortableApps Windows x64 — Source-Builder Kit b1r8
+# Ardia PortableApps Windows x64 — Source-Builder Kit b1r9
+
+## b1r9 — protect against incomplete upgrades (stale b1r7 tests in the b1r8 GitHub run)
+
+**LOG-OBSERVED:** On the b1r8 GitHub run (`logs_120282255983.zip`), unit tests failed before Visual Studio checks because the repository's `tests/test_local.py` still expected `b1r7`. The distributed b1r8 ZIP already contains the b1r8 version of that test. This discrepancy indicates a *mixed-version checkout*, not an Ardia or MSVC failure. b1r9 includes a new `BUILDER_REVISION` file, a fail-fast consistency check before testing, and dynamic test expectations. If an older file remains after extraction, GitHub Actions names it and asks for a complete overwrite.
+
+**Important with GitHub Desktop:** Extract all kit contents **directly** into the cloned repository root, not into an `Ardia-PortableApps-Builder-Kit-b1r9` subdirectory. Enable replacement/overwrite of existing files. Check that `tests/test_local.py`, `tests/test_msvc_preflight.py`, `.github/workflows/build.yml`, `BUILDER_REVISION`, and `scripts/check-builder-revision.py` are committed together; push the commit and make sure the new workflow run shows its commit SHA. No manual Git initialization, upstream fork, compiler or installer is needed locally. Run `python scripts/check-builder-revision.py` locally if Python is available, or rely on the early Windows runner check.
+
+**Status:** b1r9's static/offline consistency fix is locally testable; the b1r8 workflow did not reach the b1r8 new MSVC initializer fixtures. Windows application compilation and actual portable browser acceptance still require a complete run.
 
 ## b1r8 — isolate Visual Studio initialization failures with documented fallback
 
@@ -65,9 +73,9 @@ b1r7 invocation fix and its regression test still require a new Windows run.
 3. Extract this entire ZIP **into the cloned repository root**. Confirm the hidden `.github/workflows/build.yml` exists at the root and `README.md` sits beside it. Do not nest it inside another folder.
 4. In GitHub Desktop, enter a commit summary, click **Commit to main**, then **Push origin**.
 5. On your GitHub repository page, go to **Actions > Ardia PortableApps Source Builder > Run workflow**. Leave `version` blank for automatic release selection. `channel=auto` prefers a stable Windows x64 release, falling back to a versioned nightly if no Windows stable exists. Set `nightly` to always pick nightlies. An exact `v0.2.47-nightly.3` can be requested as long as its source release remains accessible.
-6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, b1r7 uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
+6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, the builder uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
 7. Open the workflow run. Separate lines describe source resolution, Windows source compilation, engine SHA-256 validation, launcher compilation, static ZIP validation, installer generation, and publication.
-8. If it succeeds, visit **Releases** in this BUILDER repository and find the new `portable-...-b1r7` release. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
+8. If it succeeds, visit **Releases** in this BUILDER repository and find the newly published portable release for this source version. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
 9. **ZIP:** extract `ArdiaPortable/` into the desired PortableApps location and launch `ArdiaPortable.exe`. **Installer:** after acceptance tests, install the `.paf.exe` into the PortableApps platform directory, then refresh the PortableApps menu.
 10. Upgrade: fully exit the browser, back up the entire `Data/` folder, and install a newer ZIP/installer **over the same ArdiaPortable folder**. Never remove, overwrite or replace `Data/`. On a failed upgrade, close Ardia, retain Data, reinstall prior app files and **restore matching backup Data** if the profile schema changed.
 
