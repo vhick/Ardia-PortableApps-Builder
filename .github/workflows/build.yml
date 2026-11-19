@@ -1,209 +1,149 @@
-name: Ardia PortableApps Source Builder
+name: Build Ardia Windows Pre-release PortableApps
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Optional exact upstream tag. Blank selects latest official Windows x64 tag with matched engine or verified same-tag setup'
+      architecture:
+        description: Windows target CPU
+        type: choice
+        options: [x64, arm64]
+        default: x64
+      requested_version:
+        description: Optional exact nightly version currently published as Windows alpha (blank = current)
         type: string
         default: ''
-      channel:
-        description: 'Find latest buildable Windows release; auto prefers working stable, then working nightly'
-        type: choice
-        options: [auto, nightly, stable]
-        default: auto
       publish:
-        description: 'Publish validated ZIP and installer in THIS builder repository'
+        description: Publish validated ZIP and PortableApps-style installer to this builder's Releases
         type: boolean
         default: true
 permissions:
   contents: write
 concurrency:
-  group: ardia-portable-${{ github.ref }}
+  group: ardia-portable-${{ github.ref }}-${{ inputs.architecture }}
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: windows-2022
-    timeout-minutes: 160
+    runs-on: windows-2025
+    timeout-minutes: 85
+    defaults:
+      run:
+        shell: pwsh
     env:
-      GH_TOKEN: ${{ github.token }}
-      PYTHONIOENCODING: utf-8
       PYTHONUTF8: '1'
-      ARDIA_CHANNEL: ${{ inputs.channel }}
-      ARDIA_VERSION: ${{ inputs.version }}
+      PYTHONIOENCODING: utf-8
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout standalone builder kit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          persist-credentials: false
-      - name: Verify pinned shared action tag identities before integration
-        shell: pwsh
-        run: ./scripts/verify-actions.ps1
-      - name: Check builder kit revision consistency BEFORE tests
-        shell: pwsh
-        run: python scripts/check-builder-revision.py
-      - name: Test resolver and engine fallback offline (no network)
-        shell: pwsh
+          python-version: '3.12'
+      - name: Unit tests (no browser GUI claims)
         run: python -m unittest discover -s tests -v
-      - name: Verify CMD batch quoting with paths containing spaces
-        shell: pwsh
-        run: ./scripts/test-msvc-batch-quoting.ps1
-      - name: Test isolated MSVC initializer fallback (controlled fixtures)
-        shell: pwsh
-        run: ./scripts/test-msvc-init-fallback.ps1
-      - name: Verify Windows x64 MSVC toolchain BEFORE costly downloads
-        shell: pwsh
-        run: ./scripts/verify-msvc.ps1
-      - name: Preflight Windows release and EXACT engine availability BEFORE compilation
-        id: upstream
-        shell: pwsh
-        run: python scripts/resolve.py
-      - name: Check out exact preflight-resolved upstream source tag
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ardia-browser/ardia
-          ref: ${{ steps.upstream.outputs.tag }}
-          path: upstream
-          persist-credentials: false
-          fetch-depth: 0
-          filter: blob:none
-      - name: Verify source SHA and lockfile identity
-        shell: pwsh
-        run: ./scripts/verify-upstream.ps1 -Identity work/identity.json
-      - name: Download and SHA256-verify official SAME-TAG Windows setup BEFORE compilation
-        if: ${{ steps.upstream.outputs.engine_source == 'official_setup' }}
-        shell: pwsh
-        run: ./scripts/download-official-setup.ps1 -Identity work/identity.json -Out "$env:RUNNER_TEMP/ardia-official-setup"
-      - name: Fetch SHA256-pinned upstream Chromium engine BEFORE compilation
-        if: ${{ steps.upstream.outputs.engine_source == 'prebuilt_engine' }}
-        shell: pwsh
+      - name: Resolve immutable source identity from official Windows alpha release
+        env:
+          ARCH: ${{ inputs.architecture }}
+          REQUEST_VERSION: ${{ inputs.requested_version }}
         run: |
-          & ./upstream/scripts/windows/fetch-engine.ps1 -Cpu x64 -Out "$env:RUNNER_TEMP/ardia-engine"
-          if ($LASTEXITCODE -ne 0) { throw 'Engine download or SHA256 verification failed' }
-      - name: Unit-test browser launch switches under Windows MSVC
-        shell: pwsh
-        run: ./scripts/test-launch-flags.ps1
-      - name: Configure upstream Node.js toolchain
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-        with:
-          node-version: '24'
-      - name: Install upstream pinned pnpm and dependencies
-        working-directory: upstream
-        shell: pwsh
+          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --identity work/identity.json
+          if ($LASTEXITCODE -ne 0) { throw 'Release resolver failed' }
+          $m = Get-Content -LiteralPath work/identity.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          "PKG_VERSION=$($m.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_TAG=$($m.release_tag_for_builder)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_ARCH=$($m.arch)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Refuse duplicate builder release identity before large downloads
+        if: ${{ inputs.publish }}
         run: |
-          npm install --global pnpm@11.1.3 --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'pnpm installation failed' }
-          pnpm install --frozen-lockfile
-          if ($LASTEXITCODE -ne 0) { throw 'frozen dependency installation failed' }
-      - name: Compile real Ardia Windows application from source
-        working-directory: upstream/apps/browser
-        shell: pwsh
+          python scripts/release.py check-tag --tag $env:PKG_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'Existing release or GitHub API failure' }
+      - name: Fetch official upstream Windows pre-release setup, verify SHA-256
         run: |
-          npx react-native run-windows --release --arch x64 --no-launch --no-deploy --no-packager --no-telemetry --logging
-          if ($LASTEXITCODE -ne 0) { throw "Upstream Windows source compilation failed ($LASTEXITCODE)" }
-          if (-not (Test-Path -LiteralPath 'windows/x64/Release/ArdiaApp.dll')) { throw 'No compiled ArdiaApp.dll' }
-      - name: Extract matching Chromium engine from official setup without shipping installer registrations
-        if: ${{ steps.upstream.outputs.engine_source == 'official_setup' }}
-        shell: pwsh
+          python scripts/release.py acquire --identity work/identity.json --out work/Ardia-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Official upstream release download failed' }
+      - name: Extract upstream binary by silent installer on isolated hosted runner ONLY
         run: |
-          $id = Get-Content work/identity.json -Raw | ConvertFrom-Json
-          & ./scripts/engine-from-official-setup.ps1 -Identity work/identity.json -Setup "$env:RUNNER_TEMP/ardia-official-setup/$($id.asset)" -CompiledApp "$env:GITHUB_WORKSPACE/upstream/apps/browser/windows/x64/Release" -Out "$env:RUNNER_TEMP/ardia-engine"
-          if ($LASTEXITCODE -ne 0) { throw 'Official same-tag setup engine extraction failed' }
-      - name: Assemble source-built Windows browser with its engine
-        shell: pwsh
+          python scripts/release.py install-ci --identity work/identity.json --installer work/Ardia-Setup.exe --out "$env:RUNNER_TEMP/Ardia-Portable-Extraction"
+          if ($LASTEXITCODE -ne 0) { throw 'Controlled runner-only upstream Inno extraction failed' }
+      - name: Prepare authentic upstream icon for resource compiler
         run: |
-          $buildCount = (& git -C upstream rev-list --count HEAD | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not ($buildCount -match '^\d+$')) { throw 'Upstream build number unavailable' }
-          $id = Get-Content work/identity.json -Raw | ConvertFrom-Json
-          & ./upstream/scripts/windows/assemble.ps1 -App upstream/apps/browser/windows/x64/Release -Engine "$env:RUNNER_TEMP/ardia-engine" -Out "$env:RUNNER_TEMP/ardia-assembled" -Version $id.version -Build ([int]$buildCount)
-          if ($LASTEXITCODE -ne 0) { throw 'Ardia assembly failed' }
-      - name: Run upstream headless Windows dependency verifier
-        shell: pwsh
+          $icon = Join-Path $env:RUNNER_TEMP 'Ardia-Portable-Extraction/Ardia.ico'
+          if (!(Test-Path -LiteralPath $icon)) { throw 'Missing upstream icon' }
+          Copy-Item -LiteralPath $icon -Destination launcher/appicon.ico
+      - name: Compile genuine Windows C++ portable launcher (MSVC, no obfuscation)
         run: |
-          & ./upstream/scripts/windows/dependency-check.ps1 -App "$env:RUNNER_TEMP/ardia-assembled"
-          if ($LASTEXITCODE -ne 0) { throw 'Upstream Windows dependency validation failed' }
-      - name: Stage genuine PortableApps structure and original icons
-        shell: pwsh
-        run: ./scripts/stage.ps1 -App "$env:RUNNER_TEMP/ardia-assembled" -Stage "$env:GITHUB_WORKSPACE/staging" -Identity "$env:GITHUB_WORKSPACE/work/identity.json"
-      - name: Compile the real C++ portable launcher
-        shell: pwsh
-        run: ./scripts/compile-launcher.ps1 -Source "$env:GITHUB_WORKSPACE/launcher/ArdiaPortable.cpp" -Output "$env:GITHUB_WORKSPACE/staging/ArdiaPortable/ArdiaPortable.exe"
-      - name: Validate local profile configuration without interactive GUI
-        shell: pwsh
+          $platform = if ($env:PKG_ARCH -eq 'arm64') { 'ARM64' } else { 'x64' }
+          cmake -S launcher -B build/launcher -G 'Visual Studio 17 2022' -A $platform
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build build/launcher --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
+          $exe = 'build/launcher/Release/ArdiaPortable.exe'
+          if (!(Test-Path -LiteralPath $exe)) { throw 'Missing genuine compiled launcher' }
+      - name: Stage ArdiaPortable with separate Data and licensing
         run: |
-          & ./staging/ArdiaPortable/ArdiaPortable.exe --portable-healthcheck
-          if ($LASTEXITCODE -ne 0) { throw 'Portable launcher healthcheck failed' }
-          $check = Get-Content 'staging/ArdiaPortable/Data/Ardia/portable-launcher.check' -Raw
-          if (-not $check.Contains('portable-root-ok')) { throw 'Portable launcher did not create its own Data' }
-          Remove-Item 'staging/ArdiaPortable/Data/Ardia/portable-launcher.check' -Force
-      - name: Independently validate ZIP with file hashes and PE architecture
-        shell: pwsh
-        run: python scripts/validate.py staging/ArdiaPortable output
-      - name: Build independent PortableApps-style installer from validated stage
+          python scripts/release.py stage --identity work/identity.json --install "$env:RUNNER_TEMP/Ardia-Portable-Extraction" --launcher build/launcher/Release/ArdiaPortable.exe --out work/ArdiaPortable
+          if ($LASTEXITCODE -ne 0) { throw 'PortableApps staging failed' }
+          ./scripts/make-icons.ps1 -Icon work/ArdiaPortable/App/AppInfo/appicon.ico -Out work/ArdiaPortable/App/AppInfo
+      - name: Independently validate PortableApps folder and ready-to-extract ZIP
+        run: |
+          python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
+          if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r1.zip"
+          python scripts/release.py zip --root work/ArdiaPortable --out $zip
+          if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          "ZIP $zip SHA256 $hash" >> $env:GITHUB_STEP_SUMMARY
+      - name: Build PortableApps-style installer with pinned SHARED builder
         id: installer
         uses: vhick/Portable-Package-Builder@v1.0.0
         with:
-          source-dir: staging/ArdiaPortable
-          output-dir: output/installer
+          source-dir: work/ArdiaPortable
+          output-dir: dist
           engine: custom-nsis
-          running-exe: App\Ardia\Ardia.exe
-          timeout-seconds: '900'
-          package-revision: b1r9
-      - name: Verify real installer PE and action-reported SHA-256
-        shell: pwsh
-        env:
-          INSTALLER: ${{ steps.installer.outputs.installer-file }}
-          INSTALLER_SHA: ${{ steps.installer.outputs.installer-sha256 }}
+          running-exe: 'App\Ardia\Ardia.exe'
+          package-revision: b1r1
+          timeout-seconds: '1200'
+      - name: Independently inspect compiled installer and hashes
         run: |
-          if (-not(Test-Path -LiteralPath $env:INSTALLER)){throw 'Installer file missing'}
-          $actual=(Get-FileHash -LiteralPath $env:INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $env:INSTALLER_SHA.ToLowerInvariant()){throw 'Installer SHA-256 mismatch'}
-          if (-not $env:INSTALLER.ToLowerInvariant().EndsWith('.paf.exe')){throw 'Not a PortableApps-style installer'}
-          Write-Host "STATIC-VALIDATED installer $env:INSTALLER $actual"
-      - name: Shared publisher dry run (no upload)
-        if: ${{ inputs.publish }}
+          $exe = '${{ steps.installer.outputs.installer-file }}'
+          if (!(Test-Path -LiteralPath $exe)) { throw 'Pinned installer action did not return a real installer path' }
+          ./scripts/verify-installer.ps1 -Installer $exe
+          if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ steps.installer.outputs.installer-sha256 }}'.ToLowerInvariant()) { throw 'Installer SHA-256 output mismatch' }
+          "Installer PE/hash validation passed; execution verified by separate test step." >> $env:GITHUB_STEP_SUMMARY
+      - name: Headless installer fresh-install and reinstall Data-preservation smoke test
+        run: |
+          ./scripts/test-installer.ps1 -Installer '${{ steps.installer.outputs.installer-file }}'
+          "Installer fresh install + same-version reinstall preserved a seeded Data marker and nested empty directories; cross-version upgrade, GUI and rollback still unverified." >> $env:GITHUB_STEP_SUMMARY
+      - name: Shared release publisher mandatory dry-run
         uses: vhick/portable-release-publisher@v1.1.1
         with:
           files: |
-            output/*.zip
-            output/installer/*.paf.exe
-          tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r9)
-          tag-prefix: portable-
+            dist/*.zip
+            dist/*.paf.exe
+          tag: ${{ env.PKG_TAG }}
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r1 (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
-      - name: Shared publisher release in calling repository
+      - name: Publish after all successful static/package checks
         if: ${{ inputs.publish }}
         uses: vhick/portable-release-publisher@v1.1.1
         with:
           files: |
-            output/*.zip
-            output/installer/*.paf.exe
-          tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r9)
-          tag-prefix: portable-
+            dist/*.zip
+            dist/*.paf.exe
+          tag: ${{ env.PKG_TAG }}
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r1 (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'
-      - name: Preserve validated ZIP if installer or publishing fails
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - name: Preserve validated ZIP as short-lived workflow artifact if installer/publisher fails
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          name: ardia-portable-zip-on-failure
-          path: output/*.zip
+          name: ArdiaPortable-validated-ZIP-recovery
+          path: dist/ArdiaPortable_*.zip
           if-no-files-found: ignore
-          retention-days: 7
-      - name: Validation evidence statement
-        if: ${{ always() }}
-        shell: pwsh
+          retention-days: 3
+      - name: Explicit test caveat
+        if: always()
         run: |
-          @'
-          ## Portability verification boundaries
-          - Official versioned Windows source is checked. Either matching public engine or SHA256-pinned official SAME-TAG Windows setup is downloaded and verified before compilation.
-          - Missing/nonpublic engine releases trigger only strict same-tag verified setup fallback; API errors are fatal. Different-tag engine/setup substitution is forbidden.
-          - The upstream engine ZIP is SHA256 verified; official setup fallback is also SHA256 verified against the GitHub-published asset digest and Chromium DLL version.
-          - Source compilation is checked when the source build step succeeds.
-          - PE layout, profile redirection healthcheck, ZIP checksum, and installer checksum are checked separately.
-          - GUI runtime, notifications, default-browser registration, update prompts, installed-app coexistence, crash recovery, and USB relocation are NOT proven by this headless workflow.
-          - Upstream Windows update behavior may require source patches before real-world portable use.
-          '@ >> $env:GITHUB_STEP_SUMMARY
+          "This workflow does not establish full Windows interactive portability, shell notification behavior, installed-Ardia coexistence or installer upgrade/rollback execution." >> $env:GITHUB_STEP_SUMMARY

@@ -1,9 +1,6 @@
-# Exclude private browser profiles and all generated binaries
-staging/
-output/
 work/
-upstream/
-*.obj
-*.pdb
-*.exe
+dist/
+build/
+launcher/appicon.ico
+*.pyc
 __pycache__/

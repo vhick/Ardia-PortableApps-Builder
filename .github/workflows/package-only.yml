@@ -1,0 +1,97 @@
+name: Packaging only - existing validated ArdiaPortable ZIP
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Existing release tag containing the validated ZIP and SHA256SUMS.txt
+        type: string
+        required: true
+      source_zip:
+        description: Exact original release ZIP filename
+        type: string
+        required: true
+      output_tag:
+        description: New unique portable- release tag (never overwrite an existing release)
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: ardia-paf-only-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Retrieve and verify original release ZIP without application rebuild
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_ZIP: ${{ inputs.source_zip }}
+          OUTPUT_TAG: ${{ inputs.output_tag }}
+        run: |
+          if ($env:SOURCE_ZIP -notmatch '^ArdiaPortable_[a-zA-Z0-9._-]+\.zip$') { throw 'Unexpected ZIP filename' }
+          if ($env:OUTPUT_TAG -notmatch '^portable-[a-zA-Z0-9._-]+$') { throw 'Expected new portable- release tag' }
+          New-Item -ItemType Directory -Force -Path dist,work | Out-Null
+          python scripts/release.py check-tag --tag $env:OUTPUT_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'Existing release or GitHub API failure' }
+          gh release download $env:SOURCE_TAG --pattern $env:SOURCE_ZIP --pattern SHA256SUMS.txt --dir dist
+          if ($LASTEXITCODE -ne 0) { throw 'Release ZIP or SHA256SUMS download failed' }
+          python scripts/verify-existing-zip.py --zip "dist/$env:SOURCE_ZIP" --sums dist/SHA256SUMS.txt --out work/ArdiaPortable
+          if ($LASTEXITCODE -ne 0) { throw 'ZIP checksum/layout/launcher validation failed' }
+          $identity = 'work/ArdiaPortable/Other/Source/build-identity.json'
+          python scripts/release.py validate --identity $identity --root work/ArdiaPortable
+          if ($LASTEXITCODE -ne 0) { throw 'Existing ZIP failed static validation' }
+      - name: Shared package installer
+        id: upb
+        uses: vhick/Portable-Package-Builder@v1.0.0
+        with:
+          source-dir: work/ArdiaPortable
+          output-dir: dist
+          engine: custom-nsis
+          running-exe: 'App\Ardia\Ardia.exe'
+          package-revision: b1r1
+      - name: Check installer PE
+        run: ./scripts/verify-installer.ps1 -Installer '${{ steps.upb.outputs.installer-file }}'
+      - name: Publisher dry-run
+        uses: vhick/portable-release-publisher@v1.1.1
+        with:
+          files: |
+            dist/*.zip
+            dist/*.paf.exe
+          tag: ${{ inputs.output_tag }}
+          keep-releases: '3'
+          prune: 'false'
+          dry-run: 'true'
+      - name: Publish new release
+        if: ${{ inputs.publish }}
+        uses: vhick/portable-release-publisher@v1.1.1
+        with:
+          files: |
+            dist/*.zip
+            dist/*.paf.exe
+          tag: ${{ inputs.output_tag }}
+          keep-releases: '3'
+          prune: 'false'
+          dry-run: 'false'
+      - name: Preserve existing validated ZIP if installer or publisher fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArdiaPortable-packaging-only-ZIP-recovery
+          path: dist/ArdiaPortable_*.zip
+          if-no-files-found: ignore
+          retention-days: 3

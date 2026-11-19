@@ -1,177 +1,81 @@
-# Ardia PortableApps Windows x64 — Source-Builder Kit b1r9
+# Ardia Windows Pre-release — PortableApps Builder Kit b1r1
 
-## b1r9 — protect against incomplete upgrades (stale b1r7 tests in the b1r8 GitHub run)
+**Selected mode: PORTABLEAPPS only**. Builds `ArdiaPortable.exe` as a **real C++/MSVC PE**, supplies `App/Ardia`, `Data/Profile`, PortableApps metadata and upstream icons, creates a ready-to-extract ZIP, invokes the separately pinned shared PortableApps-style NSIS installer, then invokes the separately pinned release publisher twice (dry-run and actual publish).
 
-**LOG-OBSERVED:** On the b1r8 GitHub run (`logs_120282255983.zip`), unit tests failed before Visual Studio checks because the repository's `tests/test_local.py` still expected `b1r7`. The distributed b1r8 ZIP already contains the b1r8 version of that test. This discrepancy indicates a *mixed-version checkout*, not an Ardia or MSVC failure. b1r9 includes a new `BUILDER_REVISION` file, a fail-fast consistency check before testing, and dynamic test expectations. If an older file remains after extraction, GitHub Actions names it and asks for a complete overwrite.
+**Not an official PortableApps.com package or Ardia release.** The Windows upstream build is **unsigned**. This source kit holds no application binary and fetches the exact published official pre-release Windows executable on demand.
 
-**Important with GitHub Desktop:** Extract all kit contents **directly** into the cloned repository root, not into an `Ardia-PortableApps-Builder-Kit-b1r9` subdirectory. Enable replacement/overwrite of existing files. Check that `tests/test_local.py`, `tests/test_msvc_preflight.py`, `.github/workflows/build.yml`, `BUILDER_REVISION`, and `scripts/check-builder-revision.py` are committed together; push the commit and make sure the new workflow run shows its commit SHA. No manual Git initialization, upstream fork, compiler or installer is needed locally. Run `python scripts/check-builder-revision.py` locally if Python is available, or rely on the early Windows runner check.
+## Architecture and upstream source
 
-**Status:** b1r9's static/offline consistency fix is locally testable; the b1r8 workflow did not reach the b1r8 new MSVC initializer fixtures. Windows application compilation and actual portable browser acceptance still require a complete run.
+- Original: https://github.com/ardia-browser/ardia
+- Source reviewed: `v0.2.47-nightly.7` associated with Windows rolling `windows-alpha` release and build 7661 (as observed November 19, 2026); the workflow **resolves current release details again on each run**.
+- Upstream engine: Chromium + Helium, not Electron. Windows app executable `Ardia.exe`, engine `chrome.dll` and application icon `Ardia.ico`; bundled Windows setup is built with **Inno Setup** (upstream `scripts/windows/installer/Ardia.iss`).
+- Input: the **official upstream Windows prerelease Inno executable**. `scripts/release.py` validates GitHub release source tag, resolves its actual source commit, records dependency lockfile blob SHA, downloads the exact x64 or ARM64 asset and verifies its declared GitHub digest when available. It **never compiles unverified main**.
+- Upstream Windows setup installs into `%LOCALAPPDATA%\\Programs\\Ardia`, creates `%LOCALAPPDATA%\\Ardia\\User Data`, HKCU browser associations/StartMenuInternet entries and an uninstaller. This is an *installed application*, NOT a portable ZIP.
+- To avoid installing that upstream setup on an end user's computer, builder executes the official Inno silent installation only on an **ephemeral GitHub-hosted Windows runner** into `RUNNER_TEMP`. The staged copy excludes `unins*` installer registrations and uninstaller. CI's disposable host mutations do not transfer into the user's Windows installation. If the upstream changes its installer switches or layout, the build **fails closed**.
+- Upstream GPL-3.0/Apache-2.0 and NOTICE are downloaded from the verified version source commit. Additional dependency notices in the upstream binary distribution must be reviewed before broad redistribution.
+- Workflows are manual dispatch; no paid runner or local compiler needed. The build explicitly rejects already-published tag identities; only an expected GitHub API 404 means not previously published.
+- **Contract exception / unresolved blocker:** User's strict input rule allows source-compiled apps or official developer **portable** releases. Upstream presently supplies only a Windows Inno **installer**, not a developer portable archive, and full Chromium source compilation has not been implemented. This kit uses official installer binaries extracted on an isolated CI runner. Consequently the kit is a genuine but **not yet fully contract-conformant implementation candidate**. A clean first-run Windows portability audit and agreement to this binary-source deviation are required before calling it production-ready.
 
-## b1r8 — isolate Visual Studio initialization failures with documented fallback
+## Portable storage and host safety
 
-**LOG-OBSERVED:** b1r7 GitHub Actions (`logs_120277176694.zip`) passed 38 local Python tests, the real Windows CMD spaced-path/exit-code test, and Visual Studio 2022 discovery; the preflight then failed exit 21 while calling `vcvars64.bat`. Because b1r7 redirected initializer stdout to `nul`, the log cannot identify why that batch returned an error. Ardia did not reach compilation.
+The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
 
-**Fix:** Try Microsoft's documented `VsDevCmd.bat -arch=amd64 -host_arch=amd64 -no_logo` first, and `vcvars64.bat` only as a second independent initialization method. Each runs in a new `cmd.exe` process; initialization output and errors are visible in GitHub Actions. Only failures to initialize the toolchain or find `cl.exe`/`link.exe` trigger fallback. Actual C++ compile/link/test errors stop immediately rather than being mislabeled as toolchain failures. The identical helper drives all three real C++ steps.
+**Critical limitation:** At the time of kit creation, Windows **actual runtime confirmation** that all Ardia-specific stores respect these settings is **not available**. Chromium's browser profile is directed to Data before initialization; browser-created OS notification caches, registered protocols, automatic updater processes and other non-Chromium stores may still touch Windows. The package does **not** claim total host cleanliness and does **not** run broad TraceGuard/ShellGuard cleanup against a potentially installed Ardia. Source-evidenced installer registrations are avoided because the user runs the extracted app, not the upstream installer; users should **not choose Make Default Browser** or enable native updates/autostart. Preserve all detected unknown host state pending attribution rather than deleting it.
 
-A controlled Windows fixture checks fallback, separate process environments, and fail-closed behavior before the real MSVC smoke test. **This does not claim b1r8 MSVC or Ardia compilation succeeded.** The actual `cl.exe` preflight must compile, link and execute a small C++ program before source download/build proceeds. All six experimental switches and `Data\Ardia` remain unchanged.
+**Credentials:** Windows DPAPI-protected passwords/cookies may not function if moved between Windows accounts/computers. Do not disable encryption or copy credential keys. Standard downloads/saved files will go to user-selected or browser-configured locations; do not equate this with an app-owned profile store. Browser profile schema downgrade and sync issues are possible with nightlies.
 
-## b1r7 — fix Windows CMD/MSVC batch quoting with spaces
+## GitHub Desktop — beginner setup
 
-**LOG-OBSERVED:** b1r6 GitHub Actions `logs_120055928085.zip` reached Visual Studio
-2022 (`C:\Program Files\Microsoft Visual Studio\2022\Enterprise`) and passed all
-36 Python tests, but the initial compiler probe failed with exit code 21.
-Windows reported `'"' is not recognized`, `'C:\Program' is not recognized`,
-and `'" >nul' is not recognized`. This is an incorrect nested CMD command
-invocation, **not missing MSVC**.
+1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
+2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
+3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
+4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r1`**. Push via **Push origin**.
+5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
+6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
+7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.
+8. For ZIP: extract its `ArdiaPortable` folder somewhere writable, then double-click the **root** `ArdiaPortable.exe`. For PortableApps Platform, put the folder in your PortableApps directory and refresh the menu. Do **not** launch `App\\Ardia\\Ardia.exe` directly.
+9. Settings/bookmarks/sessions/extensions should live in `ArdiaPortable\\Data\\Profile`; confirm through the first-run acceptance tests before relying on it.
+10. To upgrade: **fully close Ardia and the launcher**, make a backup of the entire `Data` folder, replace the `App`, `Other` and root launcher files from the new ZIP, and leave `Data` intact. Never copy `Data` from an empty new ZIP over existing profile data.
+11. To roll back: back up the current `Data`, restore the previous binaries; if the browser's data schema changed, restore the **matching backup of Data** from that previous version rather than attempting to open a newer profile with an older Chromium engine.
+12. **Packaging only:** After a validated ZIP is published, Actions → **Packaging only** → provide the existing release tag, exact ZIP filename, and a **new** output tag beginning `portable-`. This produces a fresh installer without downloading/rebuilding upstream.
 
-**Fix:** `msvc-tools.ps1` now has a single `Invoke-ArdiaMsvcBatch` helper that
-passes a double-quoted batch path directly through .NET's
-`ProcessStartInfo.Arguments` as `/D /S /C ""path with spaces.cmd""`, bypassing
-PowerShell's native command-line argument re-quoting. The preflight, launcher
-argument tests, and final launcher compiler all use this helper. The workflow
-also runs a new standalone batch-path/exit-code regression before any costly
-downloads, then compiles and executes a trivial C++ fixture in a deliberately
-spaced directory. Compiler results are judged by the real process exit code.
+### Windows runtime acceptance (must be done manually)
 
-**Evidence:** offline static/source checks and C++ flags are locally testable;
-actual Windows CMD invocation, Ardia source compilation, installer and GUI
-behavior have **not yet been verified** for b1r7. All six requested
-launcher flags remain unchanged. `Data\Ardia` profile handling and strict same-tag engine
-fallback are unchanged.
+Using a disposable Windows test account **without important pre-existing browser data**: inspect normal and installed-Ardia profile locations before/after first launch, set preferences, add bookmarks, install an extension, exit all Ardia processes, relaunch, relocate folder/drive, retest. Use Process Monitor with filters for `Ardia.exe` and confirmed children to inspect writes to `%APPDATA%`, `%LOCALAPPDATA%`, registry and notifications. Compare to a separately installed Ardia user profile. Confirm settings/session persistence, browser windows, links, HTTPS, downloads, extensions, pop-ups, new profiles, notifications and click-to-open. Test the ZIP and `.paf.exe` installer independently on clean Windows, reinstall/upgrade preserving seeded Data files **and nested empty trees**. Unexpected host writes or lost credentials should be documented before regular use. **Do not run registry cleanup broadly.**
 
-## b1r6 MSVC toolchain compatibility and preflight
+### Provenance / behavior caveats
 
-**Observed issue:** the b1r5 GitHub Actions run used `windows-latest`, which resolved to
-`windows-2025-vs2026` (image 20261103.298.1). Before compiling the browser,
-`test-launch-flags.ps1` reported `MSVC C++ compiler is unavailable`. This is a
-compiler discovery issue, **not evidence that the browser or launcher failed to compile**.
+- `Windows compilation`: expected when GitHub Actions MSVC step succeeds, not executed in this Linux authoring environment.
+- `Ready-to-extract ZIP`: generated in GitHub Actions, not included inside this builder kit.
+- `PortableApps installer`: generated from the ZIP staging using `vhick/Portable-Package-Builder@v1.0.0`, default `custom-nsis`; a hosted-runner fresh-install/reinstall Data-protection smoke test runs, but true cross-version upgrade, rollback and GUI are still manual. Not PortableApps.com certified.
+- `Release`: published using `vhick/portable-release-publisher@v1.1.1` only after publisher dry-run succeeds, if `publish=true`.
+- Shared action **pinned tag interfaces** were inspected in upstream GitHub `action.yml` at the named tags (source-dir/output-dir/engine/running-exe/package-revision and files/tag/prune/dry-run); exact full commit SHAs were not independently obtained here, so tags remain in this initial builder pending production immutable pin audit.
+- This builder is **not proof of zero Windows traces**; no runtime tests on a real Windows desktop or PortableApps host have been completed for this kit.
 
-**Change:** `.github/workflows/build.yml` now requests `windows-2022` (Visual Studio
-2022 with supported VC x64 tools), rather than the mutable `windows-latest` alias.
-The new `scripts/msvc-tools.ps1` is shared by `verify-msvc.ps1`,
-`test-launch-flags.ps1` and `compile-launcher.ps1`. It queries `vswhere` with the
-VC component requirement, enumerates other installations if that query returns
-nothing, and requires `vcvars64.bat` **and** a real x64 `cl.exe` before selecting
-a toolchain. The preflight actually invokes `cl.exe` on a minimal C++ fixture, failing **before** the
-large upstream setup download if toolchain setup fails. It does not install
-compilers, modify host registry settings, or request elevation.
+## Files
 
-The b1r6 Windows Actions log verifies MSVC discovery under Visual Studio 2022,
-but the subsequent batch invocation failed before any C++ compilation. The
-b1r7 invocation fix and its regression test still require a new Windows run.
+- `.github/workflows/build.yml` — single-job official prerelease acquisition → genuine MSVC launcher → staging → ZIP → pinned installer → dry-run and publish.
+- `.github/workflows/package-only.yml` — verifies source ZIP and checksum then builds another `.paf.exe`.
+- `launcher/main.cpp`, `CMakeLists.txt`, `resource.rc` — real native launcher implementation; compiled per requested CPU.
+- `scripts/release.py` — GitHub release/version/source/lockfile attestation, Windows-only runner extraction, assembly, validation, ZIP and hashes.
+- `scripts/make-icons.ps1` — derives PNG icons from official upstream ICO.
+- `scripts/verify-installer.ps1` — checks `.paf.exe` PE structure and SHA.
+- `scripts/test-installer.ps1` — hosted-Windows-only NSIS /S fresh-install and same-version reinstall test with seeded Data and nested empty-tree preservation.
+- `scripts/verify-existing-zip.py` — zip-slip/symlink/CRC/SHA check for packaging only.
+- `tests/test_builder.py` — isolated static/safety fixtures, not application runtime simulation.
+- `docs/AUDIT.md` — paths, findings, evidence stages and limitations.
 
+## Troubleshooting
 
-**Mode:** PORTABLEAPPS only. The ZIP you are downloading is the **builder source kit**, not a precompiled browser. GitHub Actions builds the browser and its genuine Windows C++ portable launcher and creates the actual ZIP and `.paf.exe` installer.
+- **`Cannot attest source`**: rolling Windows release changed its format or version tag doesn't identify actual Windows source. Stop; audit before updating parser.
+- **`Official GitHub digest unavailable`**: SHA recorded locally but there is no independent digest; upstream identity still resolves by official asset and source tag.
+- **`Inno setup did not place ...`**: packaging was changed, or silent `/DIR` override stopped working. Do not copy an incomplete folder into a release.
+- **`Missing icon`**: upstream icon changed; update the specific path after inspection; do not fabricate a brand icon.
+- **`Source commit differs`**: Windows alpha and source prerelease tags disagree. Stop until source provenance verified.
+- **`MSVC` failure**: inspect actual C++ compiler errors in Actions; do not publish dummy EXE.
+- **`Windows startup returns immediately`**: open from root launcher, verify profile folder writable, inspect app and Event Viewer logs. Do not delete profile or switch to installed Ardia profile.
+- **`Launcher stays running`**: it holds the per-folder lock while exact-path Ardia processes remain. Close all portable browser windows and subprocesses normally.
+- **`Installer action fails`**: the independently validated ZIP is uploaded as a short-lived 3-day **Actions workflow artifact**, where available, rather than silently discarded. Release publication stays blocked. The upload is recovery-only, not a publisher replacement.
+- **`Rollback`**: if a newer Chromium schema changed Data, use the matching older Data backup.
 
-**Status:** b1r7 passes 38 offline Python tests (including Windows CRLF checkout, source-tampering, and new CMD-quoting wiring assertions) and local C++ flag tests. The new b1r6 GitHub Actions log passed 36 earlier tests and found VS2022, but failed at CMD batch quoting before app compilation. **b1r7 has not been executed in Windows Actions.** Real browser startup, USB relocation, notification compatibility, installed-app coexistence and installer execution remain unverified. Do not treat this kit as an official PortableApps.com distribution.
-
-## User setup using GitHub Desktop
-
-1. Sign in to GitHub and create a NEW, empty repository such as `Ardia-PortableApps-Builder`. Do **not** fork upstream Ardia. Choose Public if releases should be public; otherwise choose Private.
-2. In GitHub Desktop, **File > Clone Repository** and choose this new builder repo. It can be an empty repo. Do not run `git init` or install a local compiler.
-3. Extract this entire ZIP **into the cloned repository root**. Confirm the hidden `.github/workflows/build.yml` exists at the root and `README.md` sits beside it. Do not nest it inside another folder.
-4. In GitHub Desktop, enter a commit summary, click **Commit to main**, then **Push origin**.
-5. On your GitHub repository page, go to **Actions > Ardia PortableApps Source Builder > Run workflow**. Leave `version` blank for automatic release selection. `channel=auto` prefers a stable Windows x64 release, falling back to a versioned nightly if no Windows stable exists. Set `nightly` to always pick nightlies. An exact `v0.2.47-nightly.3` can be requested as long as its source release remains accessible.
-6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, the builder uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
-7. Open the workflow run. Separate lines describe source resolution, Windows source compilation, engine SHA-256 validation, launcher compilation, static ZIP validation, installer generation, and publication.
-8. If it succeeds, visit **Releases** in this BUILDER repository and find the newly published portable release for this source version. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
-9. **ZIP:** extract `ArdiaPortable/` into the desired PortableApps location and launch `ArdiaPortable.exe`. **Installer:** after acceptance tests, install the `.paf.exe` into the PortableApps platform directory, then refresh the PortableApps menu.
-10. Upgrade: fully exit the browser, back up the entire `Data/` folder, and install a newer ZIP/installer **over the same ArdiaPortable folder**. Never remove, overwrite or replace `Data/`. On a failed upgrade, close Ardia, retain Data, reinstall prior app files and **restore matching backup Data** if the profile schema changed.
-
-## Actual layout (after source build)
-
-```
-ArdiaPortable/
-  ArdiaPortable.exe              genuine MSVC-built x64 launcher
-  App/
-    AppInfo/appinfo.ini
-    AppInfo/appicon.ico
-    AppInfo/appicon_16.png
-    AppInfo/appicon_32.png
-    Ardia/Ardia.exe               actual upstream-source-built Windows app
-    Ardia/ArdiaApp.dll
-    Ardia/chrome.dll
-    Ardia/...                     complete engine and UI dependencies
-  Data/Ardia/                    portable user profile and app-owned data
-  Other/Source/                  upstream licenses, notices, source identity
-```
-
-## Portability strategy
-
-The source reviewed for Windows has `apps/browser/windows/Ardia/Paths.h` with `ARDIA_DATA_DIR`; it chooses the app-owned storage root **before app initialization** and is used in upstream Windows launch tests. The real compiled C++ root launcher resolves paths relative to **its own executable**, sets `ARDIA_DATA_DIR` and `ARDIA_CONFIG_DIR` to `Data\Ardia`, and launches the source-built browser. It safeguards installed-browser registration: if the upstream installed Ardia is registered in this account, the launcher refuses coexistence by default (test-only override in a disposable VM). It also uses a per-folder single-instance lock and rejects Data junctions. It forwards regular CLI arguments, preserves the b1r2 experimental defaults documented below, and blocks `--user-data-dir`/`--disk-cache-dir` overrides that could redirect profile data out of the package. It does not touch global `APPDATA`, `USERPROFILE`, `TEMP`, services, firewall, or registry and requires no admin rights. It waits for the main browser process, without force-killing children.
-
-**Do not assume zero host traces.** Ardia's Windows app sets a fixed `Ardia.Browser` AUMID and has notification handling. Browser/Windows shell notifications, default-browser association, shell caches, Windows credentials and auto-updater behavior are **not proven isolated**. Do not set the portable app as your default browser or enable startup registration during tests. This kit DOES NOT run broad ShellGuard or TraceGuard post-exit scavenging because no safe app-owned allowlist for runtime changes was proven. No file, registry key, shortcut or installed browser profile is deleted by the launcher. Further source-level changes and Windows runtime observation may be necessary for full contract compliance.
-
-**Important:** Upstream Ardia Windows includes a self-update flow designed for installed builds. Until independently verified, **do not click Ardia's Check for Updates / Install Update inside the portable app**. Update using this builder's source-built ZIP/installer only. An untested upstream self-update may attempt to launch the standard per-user installer and create host registrations.
-
-## Default launcher arguments (retained from b1r2)
-
-The **compiled ArdiaPortable.exe** now adds these six command-line switches to **every normal Ardia.exe startup**, in this order:
-
-```text
---disable-ardia-update --no-default-browser-check --disable-logging --disable-breakpad --disable-machine-id --disable-encryption-win
-```
-
-These are **trial arguments**, not Ardia source patches. Upstream Windows Ardia was **not verified to recognize** `--disable-ardia-update`, `--disable-machine-id`, or `--disable-encryption-win`. The last two are commonly used in modified Brave/Chromium distributions, but might be completely ignored by Ardia. `--no-default-browser-check`, `--disable-logging` and `--disable-breakpad` have Chromium usage/evidence, but their effect in this specific Ardia build still requires testing. **Do not assume** the update command prevents Ardia's in-app installer updater. Follow the existing update restrictions.
-
-**Security:** If `--disable-encryption-win` is implemented in a particular browser build, it can disable some Windows encryption protections for browser secrets. Do not use existing sensitive accounts/passwords until source and runtime tests establish precisely what it does. If unrecognized, it will not solve cross-PC password portability. Avoid copying an installed browser's profile into portable `Data` to test this.
-
-For troubleshooting, run `ArdiaPortable.exe --portable-no-default-flags` to start without these six default switches. It does not disable the portable profile redirection or normal host-protection checks. All other normal command-line arguments are still forwarded and preserved. Supplying one of the six switches explicitly does not cause a duplicate. The helper is included as `launcher/ArdiaLaunchFlags.h` and copied to the output package's `Other/Source/`.
-
-**Verification:** C++ launch-option construction tests were run locally; the workflow now runs the same tests using Windows MSVC. These checks prove only the launch-command construction; there is no Windows browser runtime evidence in this kit. If Ardia offers Chromium's `chrome://version`, check the running command line there to see what was passed (listing a switch does **not** prove its behavior).
-
-## b1r5 immutable-Git manifest verification fix (retained)
-
-The b1r4 CI run selected `v0.2.47-nightly.5` and the verified same-tag setup fallback, but stopped at **Step 7**: the source manifest SHA-256 computed on the Windows checkout (`ad913cc1...`) did not match the preflight's immutable GitHub API blob (`9c3ec2a0...`). The most likely cause is Git for Windows converting LF line endings to CRLF. A mismatch alone does not conclusively prove the cause. This fix verifies the exact Git blob bytes and checks the materialized file independently.
-
-- New `scripts/verify-source-content.py` reads manifest and lockfile from the immutable `HEAD:path` Git objects in **binary mode**, rather than relying on Windows worktree file bytes.
-- Requires the Git manifest SHA-256 to match preflight **exactly** and (when present) the Git object ID to match the GitHub API blob ID. Validates the approved engine release, archive name, SHA-256 and Chromium version.
-- Checks that the worktree copy differs, at most, by LF/CRLF line endings. Any other changes to the manifest or lockfile **fail closed**.
-- Records the version-stable Git blob SHA-256 for `pnpm-lock.yaml` in the build identity, not a platform-specific CRLF hash.
-- Tests cover identical and CRLF checkouts, tampered worktree manifest or lockfile, wrong preflight hash, wrong Git object ID, missing files and incompatible engine identity.
-- Does **not** relax source provenance, engine SHA-256, same-tag setup requirements, or installer publication gates. All b1r4 fallback behavior and six experimental launcher flags are retained.
-
-**Evidence:** b1r4 Step 7 and b1r5 Step 10 failures are LOG-OBSERVED; source-integrity tests are STATIC-VALIDATED. Windows Actions b1r7 compilation, official setup extraction, real browser launch, installer and publisher remain NOT YET VERIFIED.
-
-## b1r4 verified official same-tag Windows setup fallback (retained)
-
-**Why:** In the user-supplied b1r3 GitHub Actions logs (`logs_120006987741.zip`), all 18 tests passed, but source preflight failed because the Chromium engine releases for nightlies .5, .4 and .3 returned GitHub 404. No app was compiled in that run.
-
-**How this setup fallback works:**
-
-1. Resolves a Windows release in **official** `ardia-browser/ardia`; its source tag and full commit SHA are fixed. Rejects moving `main`, unknown forks, unverifiable releases and unexpected asset names.
-2. Reads source-commit-locked `scripts/windows/engine/prebuilt.json` and checks for the corresponding official published engine release and binary. An available engine is always preferred.
-3. If the **exact engine release is inaccessible**, checks ONLY the **same source tag's** official Windows x64 setup asset with a published GitHub `sha256:` digest, expected filename, asset ID and download URL. An unversioned `windows-alpha` pointer is not substituted. An explicit version never silently switches source tags.
-4. Downloads and checks the entire setup against the published GitHub SHA-256 and exact reported size **before** Node dependencies or Windows compilation. If the hash is absent or incorrect, stops safely.
-5. Builds the actual upstream Windows `ArdiaApp.dll` from the pinned source. In a disposable hosted CI runner, tries to unpack the authenticated same-tag setup without running it using 7-Zip. If extraction is unsupported, the builder may run the official Inno Setup installer **silently into an isolated runner temporary directory**. These temporary runner registrations are **not** copied into the portable ZIP. This is not an official developer portable distribution.
-6. Verifies the extracted payload contains `Ardia.exe`, `ArdiaApp.dll` and `chrome.dll`, and checks `chrome.dll`'s version against the original source engine manifest. Rejects unexpected junctions. Uses its verified Chromium runtime while replacing the installer app component with the compiled source app through upstream `assemble.ps1`.
-7. Records source commit, dependency lockfile hash, engine strategy, original manifest, downloaded SHA-256 and builder revision in `Other/Source/build-identity.json`. Builds and checks the independent PortableApps ZIP first, then calls the pinned shared installer and publisher.
-
-**Limitations:** This fallback's setup extraction, assembly and Chromium version equality have **not yet run in Windows Actions**. Some Inno Setup variants may not support the assumed unattended extraction/install path, and exact engine DLL version could differ; the builder is designed to stop rather than silently ship mismatched binaries. The official upstream Windows setup may temporarily register a browser on the hosted CI runner; that is not a change to your own computer and must not be confused with a portable runtime test. The resulting browser's background child processes, updater, host registry behavior, notifications and portable credential mobility still require manual acceptance.
-
-**Why not use `windows-alpha` directly?** That is an independently moving nightly alias. the builder accepts only a versioned setup asset belonging to the selected source tag; no silent cross-commit substitutions. The user can test `nightly` channel with `version` blank for numeric selection or specify a tagged release intentionally.
-
-## Build provenance and licensing
-
-- Only official `ardia-browser/ardia` versioned release tags with Windows x64 assets are eligible. Unversioned aliases like `windows-alpha`, `main`, unverified forks and unofficial mirrors are **not** silently selected.
-- GitHub API resolves tag to full commit SHA; source checkout SHA and tag are checked. `pnpm-lock.yaml` is SHA-256 recorded, and dependencies are installed with `--frozen-lockfile`.
-- The Windows application is compiled using the upstream React Native Windows recipe; its Chromium engine comes either from the source-matched, SHA-256-pinned engine ZIP or the source-tag-identical, SHA-256-verified official Windows setup. The Chromium engine itself is not built from source on GitHub Free runners.
-- Upstream `scripts/windows/assemble.ps1` combines the app and engine. A separate C++ MSVC build produces `ArdiaPortable.exe`.
-- Source for the selected upstream tag is at `https://github.com/ardia-browser/ardia/tree/<tag>`. Upstream supplies GPL-3.0, Apache-2.0, and dependency attribution under `LICENSE`, `LICENSE.Apache-2.0`, and `NOTICE`; copied into `Other/Source`. Users should review full Chromium/Helium/uBlock obligations and ensure source availability with binary distribution.
-- The resulting package is unofficial, unsigned unless the source upstream provides signing, and **not certified** by PortableApps.com. Windows SmartScreen and antivirus can show warnings.
-- Shared Package Builder is **`vhick/Portable-Package-Builder@v1.0.0`**, engine **`custom-nsis`**. Shared Release Publisher is **`vhick/portable-release-publisher@v1.1.1`**, keep=3, prune=false. These are pinned baselines, not upgrade requests.
-
-## Limitations and troubleshooting
-
-- If there is no publicly accessible matching engine **and** no verified official same-tag setup, preflight fails before compilation. Inspect `Preflight Windows release...` for the exact failure; missing GitHub-published SHA-256 is intentionally not bypassed.
-- If React Native compilation fails, use `Compile real Ardia Windows application from source` logs. The upstream Windows source is rapidly changing; exact tag compatibility is not guaranteed.
-- If the upstream engine download or official same-tag setup download fails, or a SHA/version mismatch occurs, stop. Do not bypass the integrity verification. Downloaded files are independently checked before compilation.
-- If `ArdiaPortable.exe` reports missing `chrome.dll` or `ArdiaApp.dll`, upstream app assembly failed: do not copy a different browser's binaries.
-- If GitHub Action `installer` fails, the validated ZIP (if created) is preserved as a temporary **failure-only** workflow artifact. Do not claim a successful installer.
-- If an installed Ardia is detected, use a separate Windows test account. Do not disable the guard in daily use. On a disposable coexistence VM only, `--allow-installed-coexistence-test` bypasses it for acceptance testing.
-- If the app fails to start from a USB drive, test on a local NTFS folder, then a path with spaces/Unicode; do not copy/import the installed Ardia profile without separate migration testing.
-- If passwords stop working after moving computers, Windows DPAPI / browser encryption may bind secrets to the old Windows account; carry a safe password export if needed, not an assumed decrypting workaround.
-- The PortableApps-style installer has not been manually exercised for reinstall/upgrade/data retention. Run the acceptance tests before treating it as production ready.
-
-Read `docs/AUDIT_AND_ACCEPTANCE.md` for the verification matrix and manual acceptance steps.
+For usage of third-party logos in redistributed packages, follow the upstream licensing notices and avoid implying upstream endorsement.
