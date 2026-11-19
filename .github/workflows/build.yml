@@ -50,7 +50,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 85
     defaults:
       run:
@@ -113,30 +113,9 @@ jobs:
           Copy-Item -LiteralPath $icon -Destination launcher/appicon.ico
       - name: Compile genuine Windows C++ portable launcher (MSVC, no obfuscation)
         run: |
-          # windows-2025 now carries Visual Studio 2026, not necessarily VS 2022.
-          # Discover the installed MSVC instance rather than hard-code a generator.
-          $platform = if ($env:PKG_ARCH -eq 'arm64') { 'ARM64' } else { 'x64' }
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          if (!(Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio discovery tool vswhere.exe missing' }
-          $vsargs = @('-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64')
-          $vsVersion = (& $vswhere @vsargs -property installationVersion | Select-Object -First 1).Trim()
-          if ($LASTEXITCODE -ne 0 -or !$vsVersion) { throw 'No usable Visual Studio C++ toolchain found on hosted runner' }
-          $major = [int]($vsVersion.Split('.')[0])
-          $generator = switch ($major) {
-            18 { 'Visual Studio 18 2026' }
-            17 { 'Visual Studio 17 2022' }
-            default { throw "Unsupported Visual Studio version: $vsVersion" }
-          }
-          $cmakeHelp = (& cmake --help | Out-String)
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect CMake generators' }
-          if (!$cmakeHelp.Contains($generator)) { throw "Installed CMake does not support $generator. Upgrade runner CMake, not the application." }
-          Write-Host "Selected $generator, Visual Studio $vsVersion, architecture $platform"
-          cmake -S launcher -B build/launcher -G $generator -A $platform
-          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
-          cmake --build build/launcher --config Release --parallel 2
-          if ($LASTEXITCODE -ne 0) { throw 'MSVC build failed' }
-          $exe = 'build/launcher/Release/ArdiaPortable.exe'
-          if (!(Test-Path -LiteralPath $exe)) { throw 'Missing genuine compiled launcher' }
+          # Pin a runner image with documented VS 2022 + MSVC x64/ARM64 toolchains.
+          # Avoid relying on the changing windows-2025 VS 2026 rollout and CMake 4.2+.
+          ./scripts/build-launcher.ps1 -Architecture $env:PKG_ARCH
       - name: Verify compiled PE contains selected switches and excludes unchecked switches
         run: |
           python scripts/verify_launcher_flags.py --exe build/launcher/Release/ArdiaPortable.exe --manifest work/launcher-options.json
@@ -151,7 +130,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r4_f$($env:PKG_OPTIONS_ID).zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r5_f$($env:PKG_OPTIONS_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -164,7 +143,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r4-f${{ env.PKG_OPTIONS_ID }}
+          package-revision: b1r5-f${{ env.PKG_OPTIONS_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -184,7 +163,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r4 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r5 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -196,7 +175,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r4 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r5 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'

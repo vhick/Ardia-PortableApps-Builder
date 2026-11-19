@@ -1,7 +1,7 @@
-# Ardia Windows Pre-release — PortableApps Builder Kit b1r4
+# Ardia Windows Pre-release — PortableApps Builder Kit b1r5
 
 
-### Select launcher arguments with checkboxes (b1r4)
+### Select launcher arguments with checkboxes (b1r5)
 
 When you click **Actions → Build Ardia Windows Pre-release PortableApps → Run workflow**, GitHub shows **seven independent on/off checkboxes**. Each controls whether an exact switch is compiled into the root `ArdiaPortable.exe`; no change to source code is needed. Checked means **pass the switch at every browser startup**; unchecked means **do not automatically pass it**. These are build-time choices. To change them later, build a NEW package and keep your existing `Data` folder.
 
@@ -19,9 +19,9 @@ After MSVC compilation, `scripts/verify_launcher_flags.py` checks the actual lau
 
 **Security caveat:** Optional extra command-line arguments passed manually to `ArdiaPortable.exe` still work, but may override behaviors. The launcher always protects the mandatory `--user-data-dir` setting. Turning a checkbox off does not force upstream to disable a feature; it only omits that switch. In particular, update prevention is not verified by source/runtime evidence.
 
-### Previous b1r3: Windows compiler and default argument fixes (19 November 2026)
+### Previous b1r3: Attempted Windows compiler and default argument fixes (19 November 2026)
 
-- Correct GitHub Actions Windows MSVC detection. The current `windows-2025` runner contains Visual Studio 2026, so the launcher compile step uses `vswhere.exe` to select installed `Visual Studio 18 2026` or supported 2022 fallback and confirms CMake knows the generator.
+- b1r3 attempted to fix GitHub Actions Windows MSVC detection by dynamically selecting VS 2026/2022 on `windows-2025`. The subsequent b1r4 CI log proved this detection was not sufficiently reliable; b1r5 instead targets the documented VS 2022 runner.
 - Preserve the requested launcher defaults: `--disable-ardia-update`, `--no-default-browser-check`, `--disable-logging`, `--disable-breakpad`, and `--disable-machine-id`. `--no-default-browser-check` was already present. These defaults are centralized in `launcher/launch_flags.h` for review.
 - **`--disable-ardia-update` and `--disable-machine-id` are not confirmed to be recognized by Ardia 0.2.47-nightly.7 on Windows.** Passing an unrecognized switch is not proof of disabling anything. Ardia's published Windows alpha release provides Settings › General › Updates › Check Now. Do not enable in-app self-update for a portable copy.
 - **`--disable-encryption-win` remains OFF by default** and is available only through an explicitly selected checkbox because it is unverified for this browser and risks breaking Windows-protected credentials if implemented. The launcher still supports explicit user command-line arguments, but disabling credentials is discouraged.
@@ -66,7 +66,7 @@ The root launcher calculates its actual folder using `GetModuleFileNameW`. Befor
 1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
 2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
 3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
-4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r4`**. Push via **Push origin**.
+4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r5`**. Push via **Push origin**.
 5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
 6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
 7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.
@@ -118,3 +118,12 @@ Using a disposable Windows test account **without important pre-existing browser
 - **`Rollback`**: if a newer Chromium schema changed Data, use the matching older Data backup.
 
 For usage of third-party logos in redistributed packages, follow the upstream licensing notices and avoid implying upstream endorsement.
+
+
+## b1r5 Windows compiler reliability fix
+
+The 2026-11-19 b1r4 CI run passed Python tests and downloaded/extracted the Ardia alpha, but did **not** compile the launcher: `vswhere` reported no qualifying Visual Studio C++ installation on `windows-2025`. b1r5 pins the build to GitHub-hosted `windows-2022`, which GitHub documents as including Visual Studio 2022 and both x64 and ARM64 tools. `scripts/build-launcher.ps1` enumerates all VS 2022 editions via `vswhere -all -prerelease`, falls back to the documented Enterprise location, and checks `vcvarsall.bat`, the target-specific `cl.exe`, and CMake generator support before compilation. The workflow itself remains fully unattended.
+
+This corrects the **toolchain discovery design**, but it is not a claim that Windows compilation, browser portability, installer behavior, or release publishing has been tested with b1r5. If the next GitHub Actions run fails, inspect the compiler diagnostics before changing any packaging or user-data logic. The upstream Inno installer remains a non-portable release, so the original source-built/official portable-input contract remains unmet.
+
+If using the workflow checkboxes, keep `--disable-encryption-win` unchecked unless you intentionally accept the unverified security and credential portability implications. The b1r4 CI log shows it was checked in that run.

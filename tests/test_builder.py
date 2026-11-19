@@ -157,10 +157,10 @@ class BuilderTests(unittest.TestCase):
     def test_workflow_flags_are_generated_before_compilation(self):
         workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
         self.assertLess(workflow.index('python scripts/launcher_options.py'),
-                        workflow.index('cmake -S launcher'))
+                        workflow.index('./scripts/build-launcher.ps1'))
         self.assertIn(' --launcher-options work/launcher-options.json', workflow)
-        self.assertIn('b1r4_f$($env:PKG_OPTIONS_ID).zip', workflow)
-        self.assertIn('package-revision: b1r4-f${{ env.PKG_OPTIONS_ID }}', workflow)
+        self.assertIn('b1r5_f$($env:PKG_OPTIONS_ID).zip', workflow)
+        self.assertIn('package-revision: b1r5-f${{ env.PKG_OPTIONS_ID }}', workflow)
         self.assertIn('PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)', workflow)
         self.assertEqual(workflow.count('type: boolean'), 8)
 
@@ -196,7 +196,7 @@ class BuilderTests(unittest.TestCase):
                 r.resolve(argparse.Namespace(launcher_options=str(options_file), identity=str(identity_file), arch='x64', version=''))
                 identity = json.loads(identity_file.read_text(encoding='utf-8'))
                 self.assertEqual(identity['launcher_options'], manifest)
-                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r4-f' + manifest['fingerprint']))
+                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r5-f' + manifest['fingerprint']))
                 results.append(identity['release_tag_for_builder'])
             self.assertNotEqual(results[0], results[1])
 
@@ -215,7 +215,7 @@ class BuilderTests(unittest.TestCase):
             (root/'Data/Profile').mkdir(parents=True)
             (root/'App/AppInfo/appinfo.ini').write_text('[Details]\nAppID=ArdiaBrowserPortableCommunity\n[Control]\nStart=ArdiaPortable.exe\n')
             manifest = opts.manifest_for(opts.DEFAULTS)
-            meta = {'arch': 'x64', 'package_revision': 'b1r4', 'launcher_options': manifest,
+            meta = {'arch': 'x64', 'package_revision': 'b1r5', 'launcher_options': manifest,
                     'launcher_flags_fingerprint': manifest['fingerprint'],
                     'upstream_app_exe_sha256': r.sha256(root/'App/Ardia/Ardia.exe'),
                     'launcher_sha256': r.sha256(root/'ArdiaPortable.exe')}
@@ -249,13 +249,32 @@ class BuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'selected UTF-16'):
                 verifier.check(good, flags_json)
 
-    def test_windows_workflow_chooses_existing_compiler(self):
+    def test_windows_workflow_pins_supported_toolchain(self):
         workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
-        self.assertIn('vswhere.exe', workflow)
-        self.assertIn('Visual Studio 18 2026', workflow)
-        self.assertIn('Visual Studio 17 2022', workflow)
-        self.assertIn('cmake --help', workflow)
-        self.assertNotIn("-G 'Visual Studio 17 2022'", workflow)
+        self.assertIn('runs-on: windows-2022', workflow)
+        self.assertIn('./scripts/build-launcher.ps1 -Architecture $env:PKG_ARCH', workflow)
+        self.assertNotIn('runs-on: windows-2025', workflow)
+        # Flags/checkmarks remain active and are generated before compilation.
+        self.assertLess(workflow.index('scripts/launcher_options.py'), workflow.index('./scripts/build-launcher.ps1'))
+
+    def test_build_script_probes_real_msvc_before_cmake(self):
+        build = (ROOT/'scripts/build-launcher.ps1').read_text(encoding='utf-8')
+        for required in ("-all -prerelease", "'[17.0,18.0)'", "VC/Tools/MSVC", 
+                         "bin/Hostx64/$hostTarget/cl.exe", "vcvarsall.bat", 
+                         "Microsoft Visual Studio/2022/Enterprise", "Visual Studio 17 2022", 
+                         "CMAKE_GENERATOR_INSTANCE:PATH", "-A $platform"):
+            self.assertIn(required, build)
+        self.assertLess(build.index('cl.exe'), build.index('cmake -S launcher'))
+        self.assertNotIn('Visual Studio 18 2026', build)
+
+    def test_workflow_uses_safe_architecture_choices_and_no_compiler_download(self):
+        workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
+        self.assertIn('options: [x64, arm64]', workflow)
+        script = (ROOT/'scripts/build-launcher.ps1').read_text(encoding='utf-8')
+        self.assertIn("[ValidateSet('x64', 'arm64')]", script)
+        self.assertIn("if ($Architecture -eq 'arm64') { 'ARM64' } else { 'x64' }", script)
+        self.assertNotIn('Invoke-WebRequest', script)
+        self.assertNotIn('Install-Module', script)
 
     def test_action_refs_pinned(self):
         wf=(ROOT/'.github/workflows/build.yml').read_text()

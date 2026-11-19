@@ -1,4 +1,4 @@
-# Ardia Windows prerelease b1r4 — source/host/storage findings (2026-11-19)
+# Ardia Windows prerelease b1r5 — source/host/storage findings (2026-11-19)
 
 ## Source evidence examined
 
@@ -60,20 +60,25 @@ This implementation acquires real official Ardia **pre-release Inno installer bi
 
 
 ### b1r2 validation regression fix
-GitHub Actions sets GITHUB_ACTIONS and RUNNER_OS for the unit-test step, so tests must explicitly clear these values when simulating a non-CI system. The isolated installer path now additionally rejects self-hosted runners by requiring RUNNER_ENVIRONMENT=github-hosted. As of authoring, actual Windows compilation, installer execution, and interactive portability are not yet verified for b1r4.
+GitHub Actions sets GITHUB_ACTIONS and RUNNER_OS for the unit-test step, so tests must explicitly clear these values when simulating a non-CI system. The isolated installer path now additionally rejects self-hosted runners by requiring RUNNER_ENVIRONMENT=github-hosted. As of authoring, actual Windows compilation, installer execution, and interactive portability are not yet verified for b1r5.
 
 ## b1r3 Windows runner / browser command-line audit
 
-- Build failure observed in `logs_120421981071.zip` (2026-11-19): after passing 11 unit tests, resolving source, verifying the official release asset SHA-256 and installing upstream into hosted runner temp, CMake failed with `Visual Studio 17 2022 could not find any instance of Visual Studio` on `windows-2025`. This is a BUILD CONFIGURATION issue, not proven runtime failure. b1r3 and later use `vswhere` to select installed VS 2026 or 2022 with an explicit supported-generator check. **Windows compilation on b1r4 NOT YET VERIFIED**.
+- Build failure observed in `logs_120421981071.zip` (2026-11-19): after passing 11 unit tests, resolving source, verifying the official release asset SHA-256 and installing upstream into hosted runner temp, CMake failed with `Visual Studio 17 2022 could not find any instance of Visual Studio` on `windows-2025`. This is a BUILD CONFIGURATION issue, not proven runtime failure. b1r3 and b1r4 attempted `vswhere` discovery on `windows-2025`, but b1r4 still failed. b1r5 uses the documented `windows-2022` image and verifies the exact MSVC toolchain on disk before compiling. **Windows compilation on b1r5 NOT YET VERIFIED**.
 - Upstream release notes: https://github.com/ardia-browser/ardia/releases/tag/windows-alpha explicitly say Windows users can check for newer builds using Settings › General › Updates › Check Now; there is no confirmed documented Windows launcher switch `--disable-ardia-update` on that page or in the source material inspected here.
 - Chromium `--no-default-browser-check`, `--disable-logging`, `--disable-breakpad` are known flags, but cannot guarantee absence of system logs, application update activity or OS traces.
-- Launcher now forwards **requested** `--disable-ardia-update` and `--disable-machine-id` as *UNVERIFIED* best-effort switches; their actual effect needs Windows runtime/source verification. Do not treat these as verified update/privacy controls. `--disable-encryption-win` is deliberately excluded due to account credential safety.
+- Launcher now forwards **requested** `--disable-ardia-update` and `--disable-machine-id` as *UNVERIFIED* best-effort switches; their actual effect needs Windows runtime/source verification. Do not treat these as verified update/privacy controls. `--disable-encryption-win` is OFF by default and may only be included through the explicit, unverified opt-in checkbox; it is not recommended.
 - We do **not** use `--disable-component-update` or blanket networking restrictions to impersonate browser update blocking, because they can disable unrelated security/browser services.
 - The launcher does not create/update scheduled tasks or registry entries. This does not guarantee upstream browser never does: verify separately with ProcMon before claiming full portability.
 
 
-## b1r4 GitHub Actions launcher argument checkboxes
+## b1r5 GitHub Actions launcher argument checkboxes
 
 The workflow_dispatch form contains seven boolean toggles (six checked by default; encryption toggle unchecked). Their values are passed as environment variables, converted strictly to booleans, and matched to a hardcoded allowlist by `scripts/launcher_options.py`; user text is never interpolated into the browser command line. GitHub Action event values are treated as typed booleans, not arbitrary input strings. The generated launcher header is compiled by MSVC and its canonical option manifest is recorded in package provenance.
 
 For a given upstream commit and architecture, a 12-character SHA-256 of the canonical option map is part of both the release tag and ZIP/installer filenames. Packaging-only carries the original signed-off ZIP choices forward and does not recompile launcher flags. These are **requested Chromium process arguments**, not proof of Ardia accepting the unverified `--disable-ardia-update`, `--disable-machine-id` or `--disable-encryption-win` switches. Disabling Windows encryption is not recommended and opt-in only. Full GUI, updater, installed-app coexistence, child lifecycle and credentials tests remain NOT YET VERIFIED.
+
+
+### b1r5 CI incident observation (2026-11-19)
+
+Actual user-uploaded `logs_120438973352.zip` shows 25 local Python tests passed in CI, the official 0.2.47-nightly.7 x64 installer was fetched and extracted, the upstream icon was prepared, then the launcher MSVC step failed: `No usable Visual Studio C++ toolchain found on hosted runner`. This is not a browser runtime test. The builder now uses `windows-2022` / VS 2022 with explicit C++ tool verification; the package and browser behavior remain unverified.
