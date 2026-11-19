@@ -73,6 +73,27 @@ class BuilderTests(unittest.TestCase):
             r.makezip(argparse.Namespace(root=str(root),out=str(out)))
             with zipfile.ZipFile(out) as z:
                 self.assertIn('ArdiaPortable/Data/Profile/Empty/Inner/',z.namelist())
+    def test_launcher_flags_defined_once_and_user_data_stays_prelaunch(self):
+        main = (ROOT/'launcher/main.cpp').read_text(encoding='utf-8')
+        flags = (ROOT/'launcher/launch_flags.h').read_text(encoding='utf-8')
+        self.assertIn('ARDIA_PORTABLE_DEFAULT_FLAGS', main)
+        self.assertIn('L" --user-data-dir=" + quote(profile)', main)
+        self.assertIn('SetEnvironmentVariableW(L"ARDIA_DATA_DIR", profile.c_str())', main)
+        self.assertLess(main.index('SetEnvironmentVariableW(L"ARDIA_DATA_DIR"'), main.index('CreateProcessW('))
+        for sw in ('--disable-ardia-update', '--no-default-browser-check',
+                   '--disable-logging', '--disable-breakpad', '--disable-machine-id'):
+            self.assertIn('L" ' + sw + '"', flags) if sw != '--disable-ardia-update' else self.assertIn('L" ' + sw + '";', flags)
+        self.assertEqual(flags.count('L" --no-default-browser-check"'), 1)
+        self.assertNotIn('L" --disable-encryption-win"', flags)
+
+    def test_windows_workflow_chooses_existing_compiler(self):
+        workflow = (ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
+        self.assertIn('vswhere.exe', workflow)
+        self.assertIn('Visual Studio 18 2026', workflow)
+        self.assertIn('Visual Studio 17 2022', workflow)
+        self.assertIn('cmake --help', workflow)
+        self.assertNotIn("-G 'Visual Studio 17 2022'", workflow)
+
     def test_action_refs_pinned(self):
         wf=(ROOT/'.github/workflows/build.yml').read_text()
         self.assertIn('vhick/Portable-Package-Builder@v1.0.0', wf)

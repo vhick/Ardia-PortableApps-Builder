@@ -8,6 +8,7 @@
 #include <cwctype>
 #include <cwchar>
 #include <cstdint>
+#include "launch_flags.h"
 
 static void fail(const std::wstring& reason) {
     MessageBoxW(nullptr, reason.c_str(), L"Ardia Portable", MB_OK | MB_ICONERROR);
@@ -102,7 +103,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         fail(L"Cannot prepare the per-process portable profile variable."); CloseHandle(guard); return 4;
     }
     std::wstring cmd = quote(app) + L" --user-data-dir=" + quote(profile)
-                     + L" --no-default-browser-check --disable-background-mode";
+                     + ARDIA_PORTABLE_DEFAULT_FLAGS;
     // Pass all additional command line arguments verbatim (Windows provides raw UTF-16 string).
     const wchar_t* tail = GetCommandLineW();
     // GetCommandLineW includes our executable; skip the first token while respecting quotes.

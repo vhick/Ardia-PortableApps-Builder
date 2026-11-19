@@ -20,7 +20,7 @@ import zipfile
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (source-attested Windows pre-release packaging)'
-REVISION = 'b1r2'
+REVISION = 'b1r3'
 
 
 def die(s):

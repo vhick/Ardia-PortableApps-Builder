@@ -1,7 +1,17 @@
-# Ardia Windows Pre-release — PortableApps Builder Kit b1r2
+# Ardia Windows Pre-release — PortableApps Builder Kit b1r3
+
+### b1r3 fixes (19 November 2026)
+
+- Correct GitHub Actions Windows MSVC detection. The current `windows-2025` runner contains Visual Studio 2026, so the launcher compile step uses `vswhere.exe` to select installed `Visual Studio 18 2026` or supported 2022 fallback and confirms CMake knows the generator.
+- Add the requested launcher defaults: `--disable-ardia-update`, `--no-default-browser-check`, `--disable-logging`, `--disable-breakpad`, and `--disable-machine-id`. `--no-default-browser-check` was already present. These defaults are centralized in `launcher/launch_flags.h` for review.
+- **`--disable-ardia-update` and `--disable-machine-id` are not confirmed to be recognized by Ardia 0.2.47-nightly.7 on Windows.** Passing an unrecognized switch is not proof of disabling anything. Ardia's published Windows alpha release provides Settings › General › Updates › Check Now. Do not enable in-app self-update for a portable copy.
+- **`--disable-encryption-win` is intentionally NOT included** in automatic defaults because it is unverified for this browser and risks breaking Windows-protected credentials if implemented. The launcher still supports explicit user command-line arguments, but disabling credentials is discouraged.
+- No change to `--user-data-dir`, `ARDIA_DATA_DIR`, data preservation, pinned packaging/publishing actions, or CI isolation.
+- **No update-blocking source patch is claimed.** Actual Windows browser update behavior must be runtime audited separately.
 
 
-### b1r2 fixes (19 November 2026)
+
+### b1r3 fixes (19 November 2026)
 
 - Fix the Windows CI safety unit test: explicitly remove GitHub runner variables in the off-runner fixture, instead of mistaking an actual CI runner for a local machine. This caused the `dummy` FileNotFoundError in b1r1.
 - Harden Inno extraction and installer smoke tests: require `RUNNER_ENVIRONMENT=github-hosted` as documented by GitHub; refuse self-hosted/private runner environments.
@@ -26,7 +36,7 @@
 
 ## Portable storage and host safety
 
-The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
+The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. The default command line is defined in `launcher/launch_flags.h`, with verified and unverified flags clearly marked. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
 
 **Critical limitation:** At the time of kit creation, Windows **actual runtime confirmation** that all Ardia-specific stores respect these settings is **not available**. Chromium's browser profile is directed to Data before initialization; browser-created OS notification caches, registered protocols, automatic updater processes and other non-Chromium stores may still touch Windows. The package does **not** claim total host cleanliness and does **not** run broad TraceGuard/ShellGuard cleanup against a potentially installed Ardia. Source-evidenced installer registrations are avoided because the user runs the extracted app, not the upstream installer; users should **not choose Make Default Browser** or enable native updates/autostart. Preserve all detected unknown host state pending attribution rather than deleting it.
 
@@ -37,7 +47,7 @@ The root launcher calculates its actual folder using `GetModuleFileNameW`. Befor
 1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
 2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
 3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
-4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r2`**. Push via **Push origin**.
+4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r3`**. Push via **Push origin**.
 5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
 6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
 7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.
@@ -80,7 +90,7 @@ Using a disposable Windows test account **without important pre-existing browser
 - **`Inno setup did not place ...`**: packaging was changed, or silent `/DIR` override stopped working. Do not copy an incomplete folder into a release.
 - **`Missing icon`**: upstream icon changed; update the specific path after inspection; do not fabricate a brand icon.
 - **`Source commit differs`**: Windows alpha and source prerelease tags disagree. Stop until source provenance verified.
-- **`MSVC` failure**: inspect actual C++ compiler errors in Actions; do not publish dummy EXE.
+- **`MSVC` failure**: `vswhere` selects an installed VS 2026/2022 C++ instance; ensure `cmake --help` lists the matching generator. Inspect actual C++ errors in Actions; do not publish dummy EXE.
 - **`Windows startup returns immediately`**: open from root launcher, verify profile folder writable, inspect app and Event Viewer logs. Do not delete profile or switch to installed Ardia profile.
 - **`Launcher stays running`**: it holds the per-folder lock while exact-path Ardia processes remain. Close all portable browser windows and subprocesses normally.
 - **`Installer action fails`**: the independently validated ZIP is uploaded as a short-lived 3-day **Actions workflow artifact**, where available, rather than silently discarded. Release publication stays blocked. The upload is recovery-only, not a publisher replacement.
