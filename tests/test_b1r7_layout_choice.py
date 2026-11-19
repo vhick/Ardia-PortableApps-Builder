@@ -34,7 +34,7 @@ class DataLayoutChoiceTests(unittest.TestCase):
         self.assertLess(wf.index('scripts/data_layout.py'), wf.index('scripts/build-launcher.ps1'))
         self.assertIn(' --data-layout work/data-layout.json', wf)
         self.assertIn('_d$($env:PKG_LAYOUT_ID).zip', wf)
-        self.assertIn('b1r7-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
+        self.assertIn('b1r8-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
         self.assertIn('-Layout $env:PKG_LAYOUT_NAME', wf)
         packaging = (ROOT / '.github/workflows/package-only.yml').read_text(encoding='utf-8')
         self.assertNotIn('windows_style_data_folders', packaging)
@@ -71,7 +71,7 @@ class DataLayoutChoiceTests(unittest.TestCase):
         layout = data_layout.manifest_for(mirror)
         identity = tmp / 'identity.json'
         identity.write_text(json.dumps({
-            'arch': 'x64', 'version': '0.2.47-nightly.7', 'package_revision': 'b1r7',
+            'arch': 'x64', 'version': '0.2.47-nightly.7', 'package_revision': 'b1r8',
             'portable_data_layout': layout['layout'], 'data_layout': layout,
             'data_layout_fingerprint': layout['fingerprint'],
             'launcher_options': opts, 'launcher_flags_fingerprint': opts['fingerprint'],
@@ -166,9 +166,11 @@ class DataLayoutChoiceTests(unittest.TestCase):
 
     def test_installer_preserves_selected_layout(self):
         script = (ROOT / 'scripts/test-installer.ps1').read_text(encoding='utf-8')
-        for name in ('windows-appdata-mirror-v2', 'legacy-profile-v1', 'Data/Profile/Empty/Nested/Leaves', 'Data/Local/Ardia/User Data/Empty/Nested/Leaves'):
+        for name in ('windows-appdata-mirror-v2', 'legacy-profile-v1', 'Data/Profile', 'Data/Local/Ardia/User Data', 'Empty/Nested/Leaves'):
             self.assertIn(name, script)
-        self.assertIn('if (!(Test-Path -LiteralPath $required -PathType Container))', script)
+        self.assertIn("(Join-Path $dest 'Data') -PathType Container", script)
+        self.assertIn('New-Item -Path $required -ItemType Directory -Force', script)
+        self.assertIn('Reinstall removed selected layout directory', script)
 
 
 if __name__ == '__main__':

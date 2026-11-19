@@ -25,7 +25,7 @@ import data_layout
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (source-attested Windows pre-release packaging)'
-REVISION = 'b1r7'
+REVISION = 'b1r8'
 
 
 def die(s):
@@ -322,13 +322,13 @@ def validate(args):
         die('Unknown portable data layout in build identity')
     if layout == 'legacy-profile-v1':
         must = [x for x in must if not x.startswith('Data/')] + ['Data/Profile']
-    elif meta.get('package_revision') not in ('b1r6', REVISION):
+    elif meta.get('package_revision') not in ('b1r6', 'b1r7', REVISION):
         die('Unrecognized package revision for mirrored profile layout')
     for rel in must:
         if not (root / rel).exists(): die('Missing required staged path: ' + rel)
     if layout == 'windows-appdata-mirror-v2' and (root / 'Data' / 'Profile').exists():
         die('Mirrored ZIP unexpectedly includes legacy Data/Profile')
-    if meta.get('package_revision') == REVISION:
+    if meta.get('package_revision') in ('b1r7', REVISION):
         actual_options = launcher_options.validate_manifest(meta.get('launcher_options'))
         if meta.get('launcher_flags_fingerprint') != actual_options['fingerprint']:
             die('Launcher options identity hash mismatch')
@@ -341,7 +341,7 @@ def validate(args):
         if data_layout.load_manifest(root / 'Other' / 'Source' / 'data-layout.json') != layout_data:
             die('Compiled layout manifest differs from package identity')
         other_layout = root / ('Data/Profile' if layout == 'windows-appdata-mirror-v2' else 'Data/Local/Ardia/User Data')
-        if other_layout.exists(): die('New b1r7 package contains both data layout roots')
+        if other_layout.exists(): die('New configurable-layout package contains both data layout roots')
     for filename in ['ArdiaPortable.exe', 'App/Ardia/Ardia.exe']:
         if pe_machine(root / filename) != {'x64': 0x8664, 'arm64': 0xAA64}[meta['arch']]:
             die('Wrong PE machine: ' + filename)

@@ -125,9 +125,10 @@ class WindowsMirrorTests(unittest.TestCase):
 
     def test_installer_preservation_test_points_to_new_layout(self):
         code=(ROOT/'scripts/test-installer.ps1').read_text(encoding='utf-8')
-        self.assertIn('Data/Local/Ardia/User Data/Empty/Nested/Leaves',code)
-        self.assertIn('Data/Roaming/Ardia',code)
-        self.assertIn('Data/Profile/Empty/Nested/Leaves',code)
+        self.assertIn("$profileRoot = Join-Path $dest 'Data/Local/Ardia/User Data'",code)
+        self.assertIn("$required = Join-Path $dest 'Data/Roaming/Ardia'",code)
+        self.assertIn("$empty = Join-Path $profileRoot 'Empty/Nested/Leaves'", code)
+        self.assertIn("$required = Join-Path $dest 'Data/Profile'",code)
 
     def test_docs_link_host_to_portable_not_reverse(self):
         doc=(ROOT/'docs/UPGRADE-AND-LINKS.md').read_text(encoding='utf-8')

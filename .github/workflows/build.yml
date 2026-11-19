@@ -144,7 +144,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r7_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r8_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -157,7 +157,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r7-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
+          package-revision: b1r8-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -166,10 +166,10 @@ jobs:
           ./scripts/verify-installer.ps1 -Installer $exe
           if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ steps.installer.outputs.installer-sha256 }}'.ToLowerInvariant()) { throw 'Installer SHA-256 output mismatch' }
           "Installer PE/hash validation passed; execution verified by separate test step." >> $env:GITHUB_STEP_SUMMARY
-      - name: Headless installer fresh-install and reinstall Data-preservation smoke test
+      - name: Headless installer Data-root and seeded-layout reinstall preservation smoke test
         run: |
           ./scripts/test-installer.ps1 -Layout $env:PKG_LAYOUT_NAME -Installer '${{ steps.installer.outputs.installer-file }}'
-          "Installer fresh install + same-version reinstall preserved a seeded Data marker and nested empty directories; cross-version upgrade, GUI and rollback still unverified." >> $env:GITHUB_STEP_SUMMARY
+          "Pinned installer created top-level Data; installer reinstall preserved seeded selected-layout folders, a Data marker, and nested empty directories. Actual browser first-launch layout creation, cross-version upgrade, GUI and rollback unverified." >> $env:GITHUB_STEP_SUMMARY
       - name: Shared release publisher mandatory dry-run
         uses: vhick/portable-release-publisher@v1.1.1
         with:
@@ -177,7 +177,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r7 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r8 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -189,7 +189,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r7 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r8 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'

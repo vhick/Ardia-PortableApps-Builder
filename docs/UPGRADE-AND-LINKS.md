@@ -1,4 +1,4 @@
-# b1r7: choose your data layout in GitHub Actions
+# Choose the portable Data layout in GitHub Actions (b1r7+; b1r8 installer smoke fix)
 
 The main workflow now includes **Windows-style Data folders** (Boolean checkbox, default **checked**).
 
@@ -133,3 +133,16 @@ On a disposable Windows profile (without pre-existing installed Ardia data):
    installed copy. Preserve all backups.
 
 Microsoft reference: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mklink
+
+## Difference between ZIP extraction and PortableApps-style installer (b1r8)
+
+- **ZIP extraction:** both selected empty profile directory paths exist immediately.
+- **Installer:** the pinned shared `custom-nsis` installer creates only `Data/`,
+  leaving profile layout subfolders absent until `ArdiaPortable.exe` is first
+  launched. This is intentional; the installer never overwrites existing Data.
+- **First launch:** the compiled root launcher creates the selected folder structure
+  before starting the browser. Actual Windows profile persistence must still be
+  checked manually.
+- Before using junctions, launch and close the portable browser **once**, verify
+  the intended folders and profile settings, and back up both installed and
+  portable profiles. Do not run installed and portable Ardia concurrently.

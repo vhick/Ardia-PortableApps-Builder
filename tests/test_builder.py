@@ -161,8 +161,8 @@ class BuilderTests(unittest.TestCase):
         self.assertLess(workflow.index('python scripts/launcher_options.py'),
                         workflow.index('./scripts/build-launcher.ps1'))
         self.assertIn(' --launcher-options work/launcher-options.json', workflow)
-        self.assertIn('b1r7_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip', workflow)
-        self.assertIn('package-revision: b1r7-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', workflow)
+        self.assertIn('b1r8_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip', workflow)
+        self.assertIn('package-revision: b1r8-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', workflow)
         self.assertIn('PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)', workflow)
         self.assertEqual(workflow.count('type: boolean'), 9)
 
@@ -201,7 +201,7 @@ class BuilderTests(unittest.TestCase):
                 r.resolve(argparse.Namespace(launcher_options=str(options_file), data_layout=str(layout_file), identity=str(identity_file), arch='x64', version=''))
                 identity = json.loads(identity_file.read_text(encoding='utf-8'))
                 self.assertEqual(identity['launcher_options'], manifest)
-                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r7-f' + manifest['fingerprint'] + '-d' + layout_manifest_for(True)['fingerprint']))
+                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r8-f' + manifest['fingerprint'] + '-d' + layout_manifest_for(True)['fingerprint']))
                 results.append(identity['release_tag_for_builder'])
             self.assertNotEqual(results[0], results[1])
 

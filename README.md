@@ -1,6 +1,6 @@
-# Ardia Windows Pre-release PortableApps Builder Kit b1r7
+# Ardia Windows Pre-release PortableApps Builder Kit b1r8
 
-## NEW: Workflow checkbox for data structure (b1r7)
+## Data folder structure workflow checkbox (introduced in b1r7, retained in b1r8)
 
 **You can now build either of TWO real application-specific data layouts.**
 Actions > Build Ardia Windows Pre-release PortableApps > Run workflow:
@@ -25,10 +25,10 @@ Build identity and recovery: new `Other/Source/data-layout.json` (validated sche
 
 **The other seven launcher switch checkboxes, safe `--disable-encryption-win` default OFF, `windows-2022` MSVC build procedure, pinned Package Builder and Release Publisher, and browser extraction method remain unchanged.** The extraction method is an upstream Windows installer on an isolated CI runner, so this still is *not* a source-built browser or an official developer portable release. A passing static test or CI package build alone does not verify zero host traces, actual profile portability, or Windows GUI behavior.
 
-### b1r7 quick setup / GitHub Desktop
+### b1r8 quick setup / GitHub Desktop
 
-1. Download and extract the entire b1r7 builder ZIP over your existing **builder repository root**, including `.github`, **not** over your installed portable browser folder.
-2. In GitHub Desktop, commit `Add optional Windows-style Ardia Data layout checkbox (b1r7)` and push.
+1. Download and extract the entire b1r8 builder ZIP over your existing **builder repository root**, including `.github`, **not** over your installed portable browser folder.
+2. In GitHub Desktop, commit `Fix installer Data layout smoke test for shared NSIS action (b1r8)` and push.
 3. Open Actions > **Build Ardia Windows Pre-release PortableApps** > **Run workflow**.
 4. Keep **Windows-style Data folders** checked to create Local/Roaming folders compatible with the screenshot; uncheck it for the original single `Data\Profile` structure. Set the other seven checkboxes as before.
 5. Download the generated ZIP or PortableApps-style installer from a successful release. Back up the complete existing portable `Data` directory *before* any upgrade. Do not copy either builder ZIP or a new blank `Data` on top of your user data.
@@ -190,3 +190,27 @@ The 2026-11-19 b1r4 CI run passed Python tests and downloaded/extracted the Ardi
 This corrects the **toolchain discovery design**, but it is not a claim that Windows compilation, browser portability, installer behavior, or release publishing has been tested with b1r5. If the next GitHub Actions run fails, inspect the compiler diagnostics before changing any packaging or user-data logic. The upstream Inno installer remains a non-portable release, so the original source-built/official portable-input contract remains unmet.
 
 If using the workflow checkboxes, keep `--disable-encryption-win` unchecked unless you intentionally accept the unverified security and credential portability implications. The b1r4 CI log shows it was checked in that run.
+
+
+## b1r8: installer Data layout and preserving existing folders
+
+**Two package formats behave differently on first install.** The independently generated
+ZIP contains the selected (initially empty) `Data/Local/Ardia` plus `Data/Roaming/Ardia`
+folders or `Data/Profile`. The pinned `vhick/Portable-Package-Builder@v1.0.0`
+`custom-nsis` installer intentionally packages only `App`, `Other`, and
+`ArdiaPortable.exe`; it creates **only** the root `Data` directory. This is a
+safety feature: on upgrades it does **not** overwrite users' `Data` content.
+
+On the first launch, the **compiled ArdiaPortable.exe** initializes the selected
+profile layout inside `Data` before starting Ardia. The installer smoke test
+in CI now models that step with a *test-only fixture* and checks that a subsequent
+silent reinstall preserves a seeded user file and completely empty nested folders.
+No browser is launched during that headless test, and therefore CI does not
+prove real Ardia profile persistence. Both checkbox positions are covered by
+static packaging fixtures. Do not share a profile with installed Ardia before
+manual Windows runtime checks.
+
+The original verified b1r7 ZIP may remain in a failed run's temporary Actions
+artifact. The b1r8 builder kit does **not** contain a compiled browser or launcher.
+See `docs/VALIDATION-b1r8.md`.
+
