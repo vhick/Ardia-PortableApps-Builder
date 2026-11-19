@@ -3,9 +3,12 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'msvc-tools.ps1')
 $vc = Find-ArdiaMsvcVcvars
-$batch = Join-Path $env:RUNNER_TEMP 'ardia-msvc-preflight.cmd'
-$source = Join-Path $env:RUNNER_TEMP 'ardia-msvc-preflight.cpp'
-$binary = Join-Path $env:RUNNER_TEMP 'ardia-msvc-preflight.exe'
+# Deliberately compile and launch within a directory containing spaces.
+$probe = Join-Path $env:RUNNER_TEMP 'Ardia MSVC preflight with spaces'
+New-Item -ItemType Directory -Path $probe -Force | Out-Null
+$batch = Join-Path $probe 'ardia msvc preflight.cmd'
+$source = Join-Path $probe 'ardia msvc preflight.cpp'
+$binary = Join-Path $probe 'ardia msvc preflight.exe'
 'int main() { return 0; }' | Set-Content -LiteralPath $source -Encoding utf8
 @(
     '@echo off',
@@ -19,7 +22,6 @@ $binary = Join-Path $env:RUNNER_TEMP 'ardia-msvc-preflight.exe'
     '"'+$binary+'"',
     'exit /b %ERRORLEVEL%'
 ) | Set-Content -LiteralPath $batch -Encoding utf8
-& cmd.exe /d /c ('"'+$batch+'"')
-$code = $LASTEXITCODE
+$code = Invoke-ArdiaMsvcBatch -Script $batch
 if ($code -ne 0) { throw "MSVC preflight failed ($code). Check the selected GitHub runner image and VC tools." }
 Write-Host 'MSVC x64 preflight passed; launcher tests and source build may proceed.'

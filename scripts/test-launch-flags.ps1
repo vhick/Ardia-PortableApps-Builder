@@ -17,7 +17,6 @@ $batch = Join-Path $env:RUNNER_TEMP 'test-ardia-flags.cmd'
     '"'+$exe+'"',
     'exit /b %ERRORLEVEL%'
 ) | Set-Content -LiteralPath $batch -Encoding utf8
-& cmd.exe /d /c ('"'+$batch+'"')
-$code = $LASTEXITCODE
+$code = Invoke-ArdiaMsvcBatch -Script $batch
 if ($code -ne 0) { throw "Launcher defaults unit tests failed ($code)" }
 Write-Host 'AUTOMATED: six launcher argument defaults, forwarding and opt-out passed with MSVC.'

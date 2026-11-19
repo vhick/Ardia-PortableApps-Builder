@@ -1,4 +1,28 @@
-# Ardia PortableApps Windows x64 — Source-Builder Kit b1r6
+# Ardia PortableApps Windows x64 — Source-Builder Kit b1r7
+
+## b1r7 — fix Windows CMD/MSVC batch quoting with spaces
+
+**LOG-OBSERVED:** b1r6 GitHub Actions `logs_120055928085.zip` reached Visual Studio
+2022 (`C:\Program Files\Microsoft Visual Studio\2022\Enterprise`) and passed all
+36 Python tests, but the initial compiler probe failed with exit code 21.
+Windows reported `'"' is not recognized`, `'C:\Program' is not recognized`,
+and `'" >nul' is not recognized`. This is an incorrect nested CMD command
+invocation, **not missing MSVC**.
+
+**Fix:** `msvc-tools.ps1` now has a single `Invoke-ArdiaMsvcBatch` helper that
+passes a double-quoted batch path directly through .NET's
+`ProcessStartInfo.Arguments` as `/D /S /C ""path with spaces.cmd""`, bypassing
+PowerShell's native command-line argument re-quoting. The preflight, launcher
+argument tests, and final launcher compiler all use this helper. The workflow
+also runs a new standalone batch-path/exit-code regression before any costly
+downloads, then compiles and executes a trivial C++ fixture in a deliberately
+spaced directory. Compiler results are judged by the real process exit code.
+
+**Evidence:** offline static/source checks and C++ flags are locally testable;
+actual Windows CMD invocation, Ardia source compilation, installer and GUI
+behavior have **not yet been verified** for b1r7. All six requested
+launcher flags remain unchanged. `Data\Ardia` profile handling and strict same-tag engine
+fallback are unchanged.
 
 ## b1r6 MSVC toolchain compatibility and preflight
 
@@ -17,14 +41,14 @@ a toolchain. The preflight actually invokes `cl.exe` on a minimal C++ fixture, f
 large upstream setup download if toolchain setup fails. It does not install
 compilers, modify host registry settings, or request elevation.
 
-These scripts have only been statically inspected and their workflow wiring locally
-validated. Actual MSVC detection, source building, package creation, GUI behavior,
-and installer operation still require GitHub Windows and manual acceptance tests.
+The b1r6 Windows Actions log verifies MSVC discovery under Visual Studio 2022,
+but the subsequent batch invocation failed before any C++ compilation. The
+b1r7 invocation fix and its regression test still require a new Windows run.
 
 
 **Mode:** PORTABLEAPPS only. The ZIP you are downloading is the **builder source kit**, not a precompiled browser. GitHub Actions builds the browser and its genuine Windows C++ portable launcher and creates the actual ZIP and `.paf.exe` installer.
 
-**Status:** b1r6 passes 36 offline Python tests (including Windows CRLF checkout, tamper-regression fixtures, and toolchain workflow wiring) and local C++ flag tests. In the user-provided b1r5 CI log `logs_120043181553.zip`, 31 tests, immutable source verification and setup download/checksum passed; MSVC detection failed before app compilation. **b1r6 has not been executed in Windows Actions.** Real browser startup, USB relocation, notification compatibility, installed-app coexistence and installer execution remain unverified. Do not treat this kit as an official PortableApps.com distribution.
+**Status:** b1r7 passes 38 offline Python tests (including Windows CRLF checkout, source-tampering, and new CMD-quoting wiring assertions) and local C++ flag tests. The new b1r6 GitHub Actions log passed 36 earlier tests and found VS2022, but failed at CMD batch quoting before app compilation. **b1r7 has not been executed in Windows Actions.** Real browser startup, USB relocation, notification compatibility, installed-app coexistence and installer execution remain unverified. Do not treat this kit as an official PortableApps.com distribution.
 
 ## User setup using GitHub Desktop
 
@@ -33,9 +57,9 @@ and installer operation still require GitHub Windows and manual acceptance tests
 3. Extract this entire ZIP **into the cloned repository root**. Confirm the hidden `.github/workflows/build.yml` exists at the root and `README.md` sits beside it. Do not nest it inside another folder.
 4. In GitHub Desktop, enter a commit summary, click **Commit to main**, then **Push origin**.
 5. On your GitHub repository page, go to **Actions > Ardia PortableApps Source Builder > Run workflow**. Leave `version` blank for automatic release selection. `channel=auto` prefers a stable Windows x64 release, falling back to a versioned nightly if no Windows stable exists. Set `nightly` to always pick nightlies. An exact `v0.2.47-nightly.3` can be requested as long as its source release remains accessible.
-6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, b1r6 uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
+6. The initial preflight checks the exact source and engine. If its dedicated engine release is unavailable, b1r7 uses the **same source-tag’s official Windows setup** only when GitHub publishes a SHA-256 digest. The setup is downloaded and hash-checked **before compiling**. If no verified source is available, it fails without compiling. Leave `version` blank to allow older versioned-nightly fallback, or set an exact tag to prohibit fallback. Leave `publish=true` to publish **only validated ZIP and installer** using the pinned publisher. The publisher first performs a `dry-run=true` check. Set `publish=false` to build/test without publishing.
 7. Open the workflow run. Separate lines describe source resolution, Windows source compilation, engine SHA-256 validation, launcher compilation, static ZIP validation, installer generation, and publication.
-8. If it succeeds, visit **Releases** in this BUILDER repository and find the new `portable-...-b1r6` release. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
+8. If it succeeds, visit **Releases** in this BUILDER repository and find the new `portable-...-b1r7` release. Download the `ArdiaPortable_...zip` or PortableApps-style `.paf.exe`. GitHub Release supplies `SHA256SUMS.txt`.
 9. **ZIP:** extract `ArdiaPortable/` into the desired PortableApps location and launch `ArdiaPortable.exe`. **Installer:** after acceptance tests, install the `.paf.exe` into the PortableApps platform directory, then refresh the PortableApps menu.
 10. Upgrade: fully exit the browser, back up the entire `Data/` folder, and install a newer ZIP/installer **over the same ArdiaPortable folder**. Never remove, overwrite or replace `Data/`. On a failed upgrade, close Ardia, retain Data, reinstall prior app files and **restore matching backup Data** if the profile schema changed.
 
@@ -81,7 +105,7 @@ For troubleshooting, run `ArdiaPortable.exe --portable-no-default-flags` to star
 
 **Verification:** C++ launch-option construction tests were run locally; the workflow now runs the same tests using Windows MSVC. These checks prove only the launch-command construction; there is no Windows browser runtime evidence in this kit. If Ardia offers Chromium's `chrome://version`, check the running command line there to see what was passed (listing a switch does **not** prove its behavior).
 
-## b1r6 immutable-Git manifest verification fix (new)
+## b1r5 immutable-Git manifest verification fix (retained)
 
 The b1r4 CI run selected `v0.2.47-nightly.5` and the verified same-tag setup fallback, but stopped at **Step 7**: the source manifest SHA-256 computed on the Windows checkout (`ad913cc1...`) did not match the preflight's immutable GitHub API blob (`9c3ec2a0...`). The most likely cause is Git for Windows converting LF line endings to CRLF. A mismatch alone does not conclusively prove the cause. This fix verifies the exact Git blob bytes and checks the materialized file independently.
 
@@ -92,25 +116,25 @@ The b1r4 CI run selected `v0.2.47-nightly.5` and the verified same-tag setup fal
 - Tests cover identical and CRLF checkouts, tampered worktree manifest or lockfile, wrong preflight hash, wrong Git object ID, missing files and incompatible engine identity.
 - Does **not** relax source provenance, engine SHA-256, same-tag setup requirements, or installer publication gates. All b1r4 fallback behavior and six experimental launcher flags are retained.
 
-**Evidence:** b1r4 Step 7 and b1r5 Step 10 failures are LOG-OBSERVED; b1r6 local tests are STATIC-VALIDATED. Windows Actions b1r6 compilation, official setup extraction, real browser launch, installer and publisher remain NOT YET VERIFIED.
+**Evidence:** b1r4 Step 7 and b1r5 Step 10 failures are LOG-OBSERVED; source-integrity tests are STATIC-VALIDATED. Windows Actions b1r7 compilation, official setup extraction, real browser launch, installer and publisher remain NOT YET VERIFIED.
 
 ## b1r4 verified official same-tag Windows setup fallback (retained)
 
 **Why:** In the user-supplied b1r3 GitHub Actions logs (`logs_120006987741.zip`), all 18 tests passed, but source preflight failed because the Chromium engine releases for nightlies .5, .4 and .3 returned GitHub 404. No app was compiled in that run.
 
-**What b1r6 does differently:**
+**How this setup fallback works:**
 
 1. Resolves a Windows release in **official** `ardia-browser/ardia`; its source tag and full commit SHA are fixed. Rejects moving `main`, unknown forks, unverifiable releases and unexpected asset names.
 2. Reads source-commit-locked `scripts/windows/engine/prebuilt.json` and checks for the corresponding official published engine release and binary. An available engine is always preferred.
 3. If the **exact engine release is inaccessible**, checks ONLY the **same source tag's** official Windows x64 setup asset with a published GitHub `sha256:` digest, expected filename, asset ID and download URL. An unversioned `windows-alpha` pointer is not substituted. An explicit version never silently switches source tags.
 4. Downloads and checks the entire setup against the published GitHub SHA-256 and exact reported size **before** Node dependencies or Windows compilation. If the hash is absent or incorrect, stops safely.
-5. Builds the actual upstream Windows `ArdiaApp.dll` from the pinned source. In a disposable hosted CI runner, tries to unpack the authenticated same-tag setup without running it using 7-Zip. If extraction is unsupported, b1r6 may run the official Inno Setup installer **silently into an isolated runner temporary directory**. These temporary runner registrations are **not** copied into the portable ZIP. This is not an official developer portable distribution.
+5. Builds the actual upstream Windows `ArdiaApp.dll` from the pinned source. In a disposable hosted CI runner, tries to unpack the authenticated same-tag setup without running it using 7-Zip. If extraction is unsupported, the builder may run the official Inno Setup installer **silently into an isolated runner temporary directory**. These temporary runner registrations are **not** copied into the portable ZIP. This is not an official developer portable distribution.
 6. Verifies the extracted payload contains `Ardia.exe`, `ArdiaApp.dll` and `chrome.dll`, and checks `chrome.dll`'s version against the original source engine manifest. Rejects unexpected junctions. Uses its verified Chromium runtime while replacing the installer app component with the compiled source app through upstream `assemble.ps1`.
 7. Records source commit, dependency lockfile hash, engine strategy, original manifest, downloaded SHA-256 and builder revision in `Other/Source/build-identity.json`. Builds and checks the independent PortableApps ZIP first, then calls the pinned shared installer and publisher.
 
-**Limitations:** This fallback's setup extraction, assembly and Chromium version equality have **not yet run in Windows Actions**. Some Inno Setup variants may not support the assumed unattended extraction/install path, and exact engine DLL version could differ; b1r6 is designed to stop rather than silently ship mismatched binaries. The official upstream Windows setup may temporarily register a browser on the hosted CI runner; that is not a change to your own computer and must not be confused with a portable runtime test. The resulting browser's background child processes, updater, host registry behavior, notifications and portable credential mobility still require manual acceptance.
+**Limitations:** This fallback's setup extraction, assembly and Chromium version equality have **not yet run in Windows Actions**. Some Inno Setup variants may not support the assumed unattended extraction/install path, and exact engine DLL version could differ; the builder is designed to stop rather than silently ship mismatched binaries. The official upstream Windows setup may temporarily register a browser on the hosted CI runner; that is not a change to your own computer and must not be confused with a portable runtime test. The resulting browser's background child processes, updater, host registry behavior, notifications and portable credential mobility still require manual acceptance.
 
-**Why not use `windows-alpha` directly?** That is an independently moving nightly alias. b1r6 accepts only a versioned setup asset belonging to the selected source tag; no silent cross-commit substitutions. The user can test `nightly` channel with `version` blank for numeric selection or specify a tagged release intentionally.
+**Why not use `windows-alpha` directly?** That is an independently moving nightly alias. the builder accepts only a versioned setup asset belonging to the selected source tag; no silent cross-commit substitutions. The user can test `nightly` channel with `version` blank for numeric selection or specify a tagged release intentionally.
 
 ## Build provenance and licensing
 

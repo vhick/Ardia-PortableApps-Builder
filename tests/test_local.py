@@ -16,10 +16,10 @@ class ResolveTests(unittest.TestCase):
         r={'tag_name':'v0.2.47-nightly.3','assets':[{'name':'Setup.exe','size':2300000}]}
         self.assertIsNone(resolver.asset(r))
 class BuilderRevisionTests(unittest.TestCase):
-    def test_kit_uses_b1r6_everywhere(self):
+    def test_kit_uses_b1r7_everywhere(self):
         files=['scripts/resolve.py','.github/workflows/build.yml','scripts/stage.ps1']
         for file in files:
-            self.assertIn('b1r6',(ROOT/file).read_text(encoding='utf-8'),file)
+            self.assertIn('b1r7',(ROOT/file).read_text(encoding='utf-8'),file)
     def test_launcher_arguments_are_wired(self):
         source=(ROOT/'launcher/ArdiaPortable.cpp').read_text(encoding='utf-8')
         self.assertIn('ardia_portable::BuildBrowserArguments(forwarded,useDefaultFlags)',source)
@@ -41,7 +41,7 @@ class BuilderRevisionTests(unittest.TestCase):
         workflow=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf-8')
         self.assertLess(workflow.index('Preflight Windows release'),workflow.index('Install upstream pinned pnpm'))
         self.assertLess(workflow.index('Verify source SHA and lockfile identity'),workflow.index('Compile real Ardia Windows application'))
-        self.assertIn('package-revision: b1r6',workflow)
+        self.assertIn('package-revision: b1r7',workflow)
     def test_packaged_source_includes_helper(self):
         self.assertIn('ArdiaLaunchFlags.h',(ROOT/'scripts/stage.ps1').read_text(encoding='utf-8'))
         self.assertIn('ArdiaLaunchFlags.h',(ROOT/'scripts/validate.py').read_text(encoding='utf-8'))

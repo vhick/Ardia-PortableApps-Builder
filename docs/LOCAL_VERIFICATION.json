@@ -1,28 +1,28 @@
 {
-  "revision": "b1r6",
-  "inspected_run_log": "logs_120043181553.zip",
-  "observed_failure": "Step 10 test-launch-flags.ps1:7; vswhere returned no installation matching MSVC component requirement; MSVC C++ compiler is unavailable",
-  "runner_image": "windows-2025-vs2026 20261103.298.1",
+  "revision": "b1r7",
+  "inspected_run_log": "logs_120055928085.zip",
+  "observed_failure": "VS2022 toolchain found; CMD quoting fails with spaces in C:\\Program Files; MSVC preflight exit code 21",
+  "runner_image": "windows-2022 Visual Studio Enterprise 2022",
   "passed_in_uploaded_run": [
-    "31 Python tests",
-    "immutable source and lockfile validation",
-    "same-tag official setup download with SHA256"
+    "36 Python tests",
+    "pinned action verification",
+    "VS2022 toolchain located (not executed)"
   ],
   "changes": [
-    "Select windows-2022 documented VS2022 x64 C++ toolchain",
-    "Fail-fast MSVC x64 preflight before upstream API/download operations",
-    "Shared VS locator: strict + fallback installation queries, verify vcvars64 and physical x64 cl.exe",
-    "Reuse compiler lookup and explicit exit checks for unit tests and compiled launcher"
+    "Shared ProcessStartInfo CMD /D /S /C double-quoted batch runner",
+    "Standalone regression for spaces in CMD path and exit-code propagation before expensive downloads",
+    "MSVC smoke test source, batch, and EXE deliberately live in folder with spaces",
+    "Use helper from preflight, launcher argument test and launcher compile scripts; preserve default flags and profile"
   ],
   "local_validation": {
-    "python_unittest": "36 passed",
+    "python_unittest": "38 passed (including 2 new CMD quotation wiring assertions)",
     "cpp_arguments": "PASS via g++ C++17 on Linux; MSVC not run",
-    "workflow_yaml": "parsed; windows-2022; 26 steps",
-    "PowerShell_execution": "NOT YET VERIFIED on Windows",
-    "ZIP_integrity": "to be recorded after packaging"
+    "workflow_yaml": "parsed with yaml BaseLoader; windows-2022; 27 steps; manual workflow_dispatch",
+    "PowerShell_execution": "NOT YET VERIFIED on Windows; new early cmd.exe regression in workflow",
+    "ZIP_integrity": "validated after packaging; see SHA256SUMS.builder.txt"
   },
-  "Windows_b1r6_ci": "NOT YET VERIFIED",
   "browser_runtime": "NOT YET VERIFIED",
   "installer_generation": "NOT YET VERIFIED",
-  "release_publication": "NOT YET VERIFIED"
+  "release_publication": "NOT YET VERIFIED",
+  "Windows_b1r7_ci": "NOT YET VERIFIED"
 }

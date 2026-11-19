@@ -1,4 +1,4 @@
-# Source audit, portability findings and acceptance — b1r6
+# Source audit, portability findings and acceptance — b1r7
 
 ## Sources inspected (Nov 18, 2026)
 
@@ -92,3 +92,11 @@ To check a b1r6 GitHub run, look for `SOURCE-INSPECTED: immutable engine manifes
 - **LOG-OBSERVED (b1r5):** `logs_120043181553.zip` shows runner `windows-2025-vs2026 20261103.298.1`; resolver/integrity tests passed (31), immutable source manifest was verified, and SHA-256 of the original official x64 setup matched GitHub metadata. Step 10 failed at `scripts/test-launch-flags.ps1:7` because its `vswhere -requires` query did not identify an MSVC toolchain. No Ardia source compilation, Windows launcher compilation, ZIP, installer or release occurred in that run.
 - **STATIC-VALIDATED (b1r6):** Hosted runner changed from `windows-latest` to documented `windows-2022` with Visual Studio 2022 C++ tools. `scripts/msvc-tools.ps1` discovers a complete compiler across compatible VS installs. `scripts/verify-msvc.ps1` compiles and runs a minimal C++ smoke-test before the large setup download. Both the launcher argument tests and its real compiler use the same shared lookup.
 - **NOT YET VERIFIED:** Actual `windows-2022` toolchain preflight, source build, engine extraction, compiled launcher, portable browser ZIP, NSIS package, GitHub release and manual Windows portability behavior are pending a new Actions run. A static test is not a Windows compiler execution.
+
+
+## b1r7 — MSVC cmd.exe quoting correction
+
+- **LOG-OBSERVED (b1r6):** `logs_120055928085.zip` passed all 36 offline Python tests; runner `windows-2022` detected `C:\Program Files\Microsoft Visual Studio\2022\Enterprise`. The MSVC batch preflight failed with CMD errors (`'"'`, `'C:\Program'`, `'" >nul'` not recognized) and exit code 21. This is a batch invocation/quotation failure, not evidence of a missing compiler.
+- **STATIC-VALIDATED (b1r7):** Added shared `Invoke-ArdiaMsvcBatch`, feeding raw `/D /S /C ""absolute path.cmd""` into .NET `ProcessStartInfo.Arguments`. All three compiler scripts use it and check the process's explicit exit code.
+- **NOT YET VERIFIED:** New Windows workflow step runs a command quoting regression in a path containing spaces and verifies a sentinel and deliberate nonzero exit code. Compiler preflight compiles/runs a fixture in a path containing spaces. These require a real Windows Actions run to be marked pass.
+- Browser source compilation, profile portability, ShellGuard/TraceGuard, notifications, installer execution and release publication remain not verified.

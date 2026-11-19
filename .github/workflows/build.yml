@@ -41,6 +41,9 @@ jobs:
       - name: Test resolver and engine fallback offline (no network)
         shell: pwsh
         run: python -m unittest discover -s tests -v
+      - name: Verify CMD batch quoting with paths containing spaces
+        shell: pwsh
+        run: ./scripts/test-msvc-batch-quoting.ps1
       - name: Verify Windows x64 MSVC toolchain BEFORE costly downloads
         shell: pwsh
         run: ./scripts/verify-msvc.ps1
@@ -138,7 +141,7 @@ jobs:
           engine: custom-nsis
           running-exe: App\Ardia\Ardia.exe
           timeout-seconds: '900'
-          package-revision: b1r6
+          package-revision: b1r7
       - name: Verify real installer PE and action-reported SHA-256
         shell: pwsh
         env:
@@ -158,7 +161,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r6)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r7)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'
@@ -171,7 +174,7 @@ jobs:
             output/*.zip
             output/installer/*.paf.exe
           tag: ${{ steps.upstream.outputs.release_tag }}
-          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r6)
+          release-title: Ardia ${{ steps.upstream.outputs.version }} PortableApps x64 (unofficial b1r7)
           tag-prefix: portable-
           keep-releases: '3'
           prune: 'false'

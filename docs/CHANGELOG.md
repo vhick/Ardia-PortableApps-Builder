@@ -1,3 +1,11 @@
+## b1r7 — fix CMD /S /C quoting with Visual Studio paths containing spaces
+
+- Inspect uploaded b1r6 log `logs_120055928085.zip`: 36 tests passed, VS 2022 compiler installation was detected, then generated batch invocation failed with `'C:\Program' is not recognized` and exit 21.
+- Replace three fragile `& cmd.exe /d /c ('"'+$batch+'"')` calls with shared `Invoke-ArdiaMsvcBatch`, using `.NET ProcessStartInfo.Arguments` for stable `/D /S /C ""...""` batch quoting.
+- Add standalone CMD batch quoting and exit code regression, and compile a smoke-test in a path containing spaces.
+- Keep `windows-2022`, six existing launch flags, persistent data paths, verified same-source-tag engine fallback, pinned Package Builder/Publisher versions.
+- Local-only validation is not Windows CI proof. No app ZIP, installer, or published release was produced in inspected b1r6 run.
+
 ## b1r6 — Windows VS2022 MSVC detection correction
 
 - Inspect `logs_120043181553.zip`: immutable source verification and verified setup download pass; b1r5 fails before compilation because MSVC detection returned no installation on `windows-2025-vs2026`.

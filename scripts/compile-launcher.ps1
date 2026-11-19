@@ -16,8 +16,7 @@ $batch = Join-Path $env:RUNNER_TEMP 'compile-ardia.cmd'
     'cl.exe /nologo /std:c++17 /EHsc /O2 /W4 /DUNICODE /D_UNICODE /MT /Fe:"'+$Output+'" "'+$Source+'" /link /SUBSYSTEM:WINDOWS shell32.lib',
     'exit /b %ERRORLEVEL%'
 ) | Set-Content -LiteralPath $batch -Encoding utf8
-& cmd.exe /d /c ('"'+$batch+'"')
-$code = $LASTEXITCODE
+$code = Invoke-ArdiaMsvcBatch -Script $batch
 if ($code -ne 0) { throw "MSVC compilation failed ($code)" }
 if (-not (Test-Path -LiteralPath $Output -PathType Leaf)) { throw 'No compiled launcher EXE' }
 Write-Host "WINDOWS-COMPILED: real portable launcher at $Output"

@@ -55,3 +55,40 @@ function Find-ArdiaMsvcVcvars {
     }
     throw 'MSVC preflight: no complete x64 VC toolchain found. Checked Visual Studio installations via vswhere (strict and unfiltered queries).'
 }
+
+
+# Run a generated .cmd file without PowerShell 7 native-argument re-quoting.
+# cmd.exe /D /S /C must receive the DOUBLE-wrapped batch path unchanged:
+# /D /S /C ""C:\path with spaces\script.cmd""
+# Using ProcessStartInfo.Arguments (not PowerShell's native invocation parser)
+# makes this identical in PowerShell 7.2/7.4 and under paths containing spaces.
+function Invoke-ArdiaMsvcBatch {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Script)
+    $resolved = (Resolve-Path -LiteralPath $Script -ErrorAction Stop).ProviderPath
+    if ([IO.Path]::GetExtension($resolved) -ine '.cmd') {
+        throw "Refusing to run a non-CMD script as a compiler batch: $resolved"
+    }
+    if ($resolved.Contains('"')) { throw 'Invalid CMD script path contains quotation marks' }
+
+    $shell = $env:ComSpec
+    if (-not $shell) { $shell = Join-Path $env:SystemRoot 'System32\cmd.exe' }
+    if (-not (Test-Path -LiteralPath $shell -PathType Leaf)) {
+        throw "Windows command interpreter missing: $shell"
+    }
+    $start = [System.Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $shell
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    # Intentionally retain BOTH outer quote characters: cmd /S removes the
+    # first and last quote, leaving the inner quoted batch filename intact.
+    $start.Arguments = '/D /S /C ""' + $resolved + '""'
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    try {
+        if (-not $process.Start()) { throw "Could not launch CMD for $resolved" }
+        $process.WaitForExit()
+        return [int]$process.ExitCode
+    }
+    finally { $process.Dispose() }
+}
