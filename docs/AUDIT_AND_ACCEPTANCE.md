@@ -1,3 +1,10 @@
+## b1r8 Windows MSVC initialization acceptance
+
+- In CI, "Verify CMD batch quoting" should pass as it did in the b1r7 run.
+- Next, "Test isolated MSVC initializer fallback" must print the deliberate primary failure, select the secondary fixture, and fail safely when no initializer is available. This is NOT a real compiler test.
+- "Verify Windows x64 MSVC toolchain" must show diagnostics from `VsDevCmd.bat` and/or `vcvars64.bat`, then compile/link/run an actual C++ fixture. If both fail, stop before downloading upstream dependencies and retain the visible error messages.
+- `test-launch-flags.ps1` and `compile-launcher.ps1` must use the same initializer selection and fail closed on true compiler errors. Do not treat any of this as browser runtime validation.
+
 # Source audit, portability findings and acceptance — b1r7
 
 ## Sources inspected (Nov 18, 2026)

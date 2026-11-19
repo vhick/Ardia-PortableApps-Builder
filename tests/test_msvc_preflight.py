@@ -17,15 +17,14 @@ class MsvcIntegrationTests(unittest.TestCase):
         self.assertIn(r'bin\Hostx64\x64\cl.exe',s)
         self.assertIn('Find-ArdiaMsvcVcvars',s)
         self.assertIn('throw',s)
-    def test_toolchain_scripts_reuse_shared_locator_and_check_exit(self):
+    def test_toolchain_scripts_use_real_compiler_and_common_fallback(self):
         for name in ['verify-msvc.ps1','test-launch-flags.ps1','compile-launcher.ps1']:
             with self.subTest(script=name):
                 s=(ROOT/'scripts'/name).read_text(encoding='utf8')
                 self.assertIn('msvc-tools.ps1',s)
-                self.assertIn('Find-ArdiaMsvcVcvars',s)
-                self.assertIn('where.exe cl.exe',s)
-                self.assertIn('Invoke-ArdiaMsvcBatch -Script $batch',s)
-                self.assertNotIn('& cmd.exe /d /c',s)
+                self.assertIn('Invoke-ArdiaMsvcTask -BodyLines $body',s)
+                self.assertIn('if errorlevel 1',s)
+                self.assertNotIn('>nul',s) # Never hide Visual Studio diagnostics.
                 self.assertIn('$code',s)
     def test_batch_runner_uses_raw_process_arguments_with_double_wrapping(self):
         s=(ROOT/'scripts/msvc-tools.ps1').read_text(encoding='utf8')
@@ -45,7 +44,32 @@ class MsvcIntegrationTests(unittest.TestCase):
         self.assertIn('with spaces',s)
         preflight=(ROOT/'scripts/verify-msvc.ps1').read_text(encoding='utf8')
         self.assertIn('Ardia MSVC preflight with spaces',preflight)
-        self.assertIn('Invoke-ArdiaMsvcBatch -Script $batch',preflight)
+        self.assertIn('Invoke-ArdiaMsvcTask -BodyLines $body',preflight)
+    def test_initializer_fallback_uses_isolated_batch_processes(self):
+        s=(ROOT/'scripts/msvc-tools.ps1').read_text(encoding='utf8')
+        self.assertIn('Get-ArdiaMsvcInitializers',s)
+        self.assertIn('Invoke-ArdiaBatchWithFallback',s)
+        self.assertIn('VsDevCmd.bat',s)
+        self.assertIn('vcvars64.bat',s)
+        self.assertIn('VSCMD_SKIP_SENDTELEMETRY',s)
+        self.assertIn('if errorlevel 1 (',s)
+        self.assertIn('Invoke-ArdiaMsvcBatch -Script $cmdPath',s)
+        self.assertIn('if ($code -eq 21 -or $code -eq 22)',s)
+        self.assertIn('No fallback, because a compiler/test failure',s)
+        self.assertNotIn('call "'+ '$vc' +'" >nul',s)
+    def test_fixture_fallback_runs_before_real_msvc_probe(self):
+        w=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf8')
+        self.assertLess(w.index('Test isolated MSVC initializer fallback'),w.index('Verify Windows x64 MSVC toolchain'))
+        fixture=(ROOT/'scripts/test-msvc-init-fallback.ps1').read_text(encoding='utf8')
+        self.assertIn('Invoke-ArdiaBatchWithFallback',fixture)
+        self.assertIn('fixture secondary',fixture)
+        self.assertIn('all supported Visual Studio initializers',fixture)
+        self.assertIn('fixtures only',fixture)
+    def test_revision_bumped_without_changes_to_upstream_pins(self):
+        w=(ROOT/'.github/workflows/build.yml').read_text(encoding='utf8')
+        self.assertIn('package-revision: b1r8',w)
+        self.assertIn('vhick/Portable-Package-Builder@v1.0.0',w)
+        self.assertIn('vhick/portable-release-publisher@v1.1.1',w)
     def test_no_change_to_launcher_flags_or_profile(self):
         t=(ROOT/'launcher/ArdiaPortable.cpp').read_text(encoding='utf8')
         f=(ROOT/'launcher/ArdiaLaunchFlags.h').read_text(encoding='utf8')

@@ -1,3 +1,12 @@
+## b1r8 — diagnose MSVC setup exit 21, use isolated VsDevCmd/vcvars64 fallback
+
+- Inspect b1r7 GitHub Actions log `logs_120277176694.zip`: 38 Python tests and real CMD quoting regression passed; VS2022 found; `vcvars64.bat` returned nonzero (mapped to 21), with errors suppressed by the prior script. No compiler run.
+- Try Microsoft-supported `VsDevCmd.bat` (x64) first; fall back to `vcvars64.bat` only for initialization or missing-tool errors, always in a new `cmd.exe` process.
+- Stop silencing initializer diagnostics. Verify both `cl.exe` and `link.exe`; only a real compiler+linker+executable success passes the MSVC preflight.
+- Share fallback in MSVC preflight, launch-flag test, and final C++ launcher build. Compiler or test failure does not trigger fallback.
+- Add a controlled fake-initializer fixture in GitHub Actions before the real compiler probe; test independent fallback and fail-closed behavior.
+- Retain windows-2022, six launcher switches, Data\Ardia storage path, source SHA/engine identity checks, and pinned shared actions. This fix is not yet Windows-tested.
+
 ## b1r7 — fix CMD /S /C quoting with Visual Studio paths containing spaces
 
 - Inspect uploaded b1r6 log `logs_120055928085.zip`: 36 tests passed, VS 2022 compiler installation was detected, then generated batch invocation failed with `'C:\Program' is not recognized` and exit 21.

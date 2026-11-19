@@ -1,28 +1,31 @@
 {
-  "revision": "b1r7",
-  "inspected_run_log": "logs_120055928085.zip",
-  "observed_failure": "VS2022 toolchain found; CMD quoting fails with spaces in C:\\Program Files; MSVC preflight exit code 21",
+  "revision": "b1r8",
+  "inspected_run_log": "logs_120277176694.zip",
+  "observed_failure": "CMD quoting test passed on Windows; VS2022 found; vcvars64.bat returned nonzero and was suppressed; MSVC preflight exits 21; source build not reached",
   "runner_image": "windows-2022 Visual Studio Enterprise 2022",
   "passed_in_uploaded_run": [
-    "36 Python tests",
-    "pinned action verification",
-    "VS2022 toolchain located (not executed)"
+    "38 Python tests",
+    "pinned shared action tag check",
+    "actual Windows CMD batch quoting and exit code test",
+    "Visual Studio 2022 discovery (not initialized)"
   ],
   "changes": [
-    "Shared ProcessStartInfo CMD /D /S /C double-quoted batch runner",
-    "Standalone regression for spaces in CMD path and exit-code propagation before expensive downloads",
-    "MSVC smoke test source, batch, and EXE deliberately live in folder with spaces",
-    "Use helper from preflight, launcher argument test and launcher compile scripts; preserve default flags and profile"
+    "VsDevCmd.bat x64 first; vcvars64.bat fallback in separate CMD process",
+    "Expose VS initializer diagnostic output",
+    "Only retry init/tool discovery failures, never compiler or test failures",
+    "Apply shared fallback to compiler preflight, launch flag tests and launcher compilation",
+    "Add Windows controlled fixture test for initializer fallback before real MSVC preflight"
   ],
   "local_validation": {
-    "python_unittest": "38 passed (including 2 new CMD quotation wiring assertions)",
-    "cpp_arguments": "PASS via g++ C++17 on Linux; MSVC not run",
-    "workflow_yaml": "parsed with yaml BaseLoader; windows-2022; 27 steps; manual workflow_dispatch",
-    "PowerShell_execution": "NOT YET VERIFIED on Windows; new early cmd.exe regression in workflow",
-    "ZIP_integrity": "validated after packaging; see SHA256SUMS.builder.txt"
+    "python_unittest": "41 passed locally on Linux (source/resolver/manifest/fallback wiring fixtures)",
+    "cpp_arguments": "PASS via g++ C++17 on Linux (real ArdiaLaunchFlags.h tests; MSVC not run)",
+    "workflow_yaml": "Python yaml.BaseLoader parse PASS; Windows 2022 runner, manual dispatch, 28 steps, MSVC fixture precedes compiler preflight",
+    "PowerShell_execution": "NOT YET VERIFIED on Windows for b1r8; a controlled fixture step is included in the workflow",
+    "ZIP_integrity": "validated after packaging using zipfile.testzip() and per-file SHA-256; see SHA256SUMS.builder.txt"
   },
   "browser_runtime": "NOT YET VERIFIED",
   "installer_generation": "NOT YET VERIFIED",
   "release_publication": "NOT YET VERIFIED",
-  "Windows_b1r7_ci": "NOT YET VERIFIED"
+  "Windows_b1r7_ci": "NOT YET VERIFIED",
+  "Windows_b1r8_ci": "NOT YET VERIFIED"
 }

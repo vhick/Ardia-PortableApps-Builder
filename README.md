@@ -1,4 +1,12 @@
-# Ardia PortableApps Windows x64 — Source-Builder Kit b1r7
+# Ardia PortableApps Windows x64 — Source-Builder Kit b1r8
+
+## b1r8 — isolate Visual Studio initialization failures with documented fallback
+
+**LOG-OBSERVED:** b1r7 GitHub Actions (`logs_120277176694.zip`) passed 38 local Python tests, the real Windows CMD spaced-path/exit-code test, and Visual Studio 2022 discovery; the preflight then failed exit 21 while calling `vcvars64.bat`. Because b1r7 redirected initializer stdout to `nul`, the log cannot identify why that batch returned an error. Ardia did not reach compilation.
+
+**Fix:** Try Microsoft's documented `VsDevCmd.bat -arch=amd64 -host_arch=amd64 -no_logo` first, and `vcvars64.bat` only as a second independent initialization method. Each runs in a new `cmd.exe` process; initialization output and errors are visible in GitHub Actions. Only failures to initialize the toolchain or find `cl.exe`/`link.exe` trigger fallback. Actual C++ compile/link/test errors stop immediately rather than being mislabeled as toolchain failures. The identical helper drives all three real C++ steps.
+
+A controlled Windows fixture checks fallback, separate process environments, and fail-closed behavior before the real MSVC smoke test. **This does not claim b1r8 MSVC or Ardia compilation succeeded.** The actual `cl.exe` preflight must compile, link and execute a small C++ program before source download/build proceeds. All six experimental switches and `Data\Ardia` remain unchanged.
 
 ## b1r7 — fix Windows CMD/MSVC batch quoting with spaces
 

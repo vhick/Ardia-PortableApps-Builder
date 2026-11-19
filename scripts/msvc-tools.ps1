@@ -92,3 +92,114 @@ function Invoke-ArdiaMsvcBatch {
     }
     finally { $process.Dispose() }
 }
+
+
+# Use Microsoft's documented VS2022 initialization methods, in isolated
+# command processes.  A previous runner had a real cl.exe but vcvars64.bat
+# returned nonzero; NEVER hide the diagnostic output when that happens.
+function Get-ArdiaMsvcInitializers {
+    [CmdletBinding()]
+    param()
+    $vcvars = Find-ArdiaMsvcVcvars
+    $vsRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $vcvars)))
+    $devCmd = Join-Path $vsRoot 'Common7\Tools\VsDevCmd.bat'
+    $candidates = [System.Collections.Generic.List[object]]::new()
+    if (Test-Path -LiteralPath $devCmd -PathType Leaf) {
+        $candidates.Add([pscustomobject]@{
+            Label = 'VsDevCmd x64'
+            Path = $devCmd
+            Parameters = '-arch=amd64 -host_arch=amd64 -no_logo'
+        })
+    }
+    if (Test-Path -LiteralPath $vcvars -PathType Leaf) {
+        $candidates.Add([pscustomobject]@{
+            Label = 'vcvars64 x64'
+            Path = $vcvars
+            Parameters = ''
+        })
+    }
+    if ($candidates.Count -eq 0) {
+        throw 'MSVC preflight: Neither VsDevCmd.bat nor vcvars64.bat exists in the selected Visual Studio installation.'
+    }
+    return $candidates.ToArray()
+}
+
+# General, source-readable fallback engine.  Each initializer gets a NEW
+# cmd.exe process; a partially initialized failed environment cannot leak
+# into the following attempt.  Fallback only for setup/availability failure,
+# never for compiler, linker, or test failures.
+function Invoke-ArdiaBatchWithFallback {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object[]]$Initializers,
+        [Parameter(Mandatory)][string[]]$BodyLines,
+        [Parameter(Mandatory)][string]$TaskLabel
+    )
+    if ($Initializers.Count -eq 0) { throw 'No Visual Studio initializers were supplied.' }
+    if ($TaskLabel -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid task identifier.' }
+    $base = $env:RUNNER_TEMP
+    if (-not $base) { $base = [IO.Path]::GetTempPath() }
+    $work = Join-Path $base 'Ardia MSVC init with spaces'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $index = 0
+    foreach ($initializer in $Initializers) {
+        $index += 1
+        $initPath = [string]$initializer.Path
+        $params = [string]$initializer.Parameters
+        $label = [string]$initializer.Label
+        if (-not (Test-Path -LiteralPath $initPath -PathType Leaf)) {
+            Write-Warning "Missing MSVC initializer: $label at $initPath"
+            continue
+        }
+        if ($initPath.Contains('"') -or $initPath.Contains([char]13) -or $initPath.Contains([char]10)) {
+            throw 'Unsafe Visual Studio initializer path.'
+        }
+        # /D prevents cmd AutoRun interference.  No global environment,
+        # registry, PATH or installed application settings are modified.
+        $cmdPath = Join-Path $work ("ardia-$TaskLabel-$index.cmd")
+        $lines = @(
+            '@echo off',
+            'setlocal EnableExtensions DisableDelayedExpansion',
+            'chcp 65001 >nul',
+            'set "VSCMD_SKIP_SENDTELEMETRY=1"',
+            ('echo Ardia: initializing MSVC with ' + $label),
+            ('call "' + $initPath + '" ' + $params),
+            'if errorlevel 1 (',
+            '  echo Ardia: Visual Studio initializer reported failure.',
+            '  exit /b 21',
+            ')'
+        ) + @($BodyLines)
+        # pwsh 7: UTF8 means UTF-8 without BOM; non-ASCII filenames survive
+        # after chcp 65001.  Using ASCII would corrupt Unicode paths.
+        $lines | Set-Content -LiteralPath $cmdPath -Encoding utf8
+        $code = Invoke-ArdiaMsvcBatch -Script $cmdPath
+        if ($code -eq 0) {
+            Write-Host "MSVC $TaskLabel passed with $label."
+            return 0
+        }
+        if ($code -eq 21 -or $code -eq 22) {
+            Write-Warning "MSVC $TaskLabel initializer $label failed (exit $code). Trying a separate supported initialization method if available."
+            continue
+        }
+        throw "MSVC $TaskLabel failed AFTER initialization (exit $code). No fallback, because a compiler/test failure must not be disguised."
+    }
+    throw "MSVC $TaskLabel failed: all supported Visual Studio initializers were unavailable or unsuccessful. Read the UNSUPPRESSED VsDevCmd/vcvars64 diagnostics immediately above."
+}
+
+function Invoke-ArdiaMsvcTask {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string[]]$BodyLines,
+        [Parameter(Mandatory)][string]$TaskLabel
+    )
+    $initializers = @(Get-ArdiaMsvcInitializers)
+    # Make actual cl.exe and link.exe availability part of the real acceptance.
+    # These codes trigger a separate environment-initialization fallback.
+    $toolChecks = @(
+        'where.exe cl.exe >nul 2>&1',
+        'if errorlevel 1 (echo Ardia: cl.exe missing after setup & exit /b 22)',
+        'where.exe link.exe >nul 2>&1',
+        'if errorlevel 1 (echo Ardia: link.exe missing after setup & exit /b 22)'
+    )
+    return Invoke-ArdiaBatchWithFallback -Initializers $initializers -BodyLines ($toolChecks + @($BodyLines)) -TaskLabel $TaskLabel
+}
