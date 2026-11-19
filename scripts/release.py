@@ -20,11 +20,12 @@ import zipfile
 # Same-directory helper is used both by the CLI and the independent fixture tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import launcher_options
+import data_layout
 
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (source-attested Windows pre-release packaging)'
-REVISION = 'b1r5'
+REVISION = 'b1r7'
 
 
 def die(s):
@@ -95,6 +96,7 @@ def resolve(args):
     version_commit = japi('/commits/v' + version, token)['sha']
     if version_commit != commit: die('Windows release binary version differs from source tag commit; aborting')
     options = launcher_options.load_manifest(args.launcher_options)
+    layout = data_layout.load_manifest(args.data_layout)
     arch = args.arch
     asset_name = 'Ardia-Setup-' + arch + '.exe'
     assets = [a for a in data.get('assets', []) if a.get('name') == asset_name]
@@ -111,8 +113,10 @@ def resolve(args):
               'asset_api_digest': asset.get('digest') or '',
               'source_lock_git_blob_sha': lock_sha, 'package_revision': REVISION,
               'launcher_options': options, 'launcher_flags_fingerprint': options['fingerprint'],
+              'data_layout': layout, 'data_layout_fingerprint': layout['fingerprint'],
               'builder_repository_commit': os.environ.get('GITHUB_SHA', 'local-unverified'),
-              'release_tag_for_builder': 'portable-ardia-' + version + '-' + arch + '-' + commit[:12] + '-' + REVISION + '-f' + options['fingerprint'],
+              'release_tag_for_builder': 'portable-ardia-' + version + '-' + arch + '-' + commit[:12] + '-' + REVISION + '-f' + options['fingerprint'] + '-d' + layout['fingerprint'],
+              'portable_data_layout': layout['layout'],
               'source_method': 'Official developer Windows pre-release Inno Setup installer; copied from isolated CI installation'}
     writejson(args.identity, actual)
     print('Resolved official Windows pre-release:', version, 'commit', commit, arch)
@@ -203,7 +207,13 @@ def stage(args):
     # The official setup creates its own shortcuts/uninstaller; neither goes into portable package.
     exclude = {'unins000.exe', 'unins000.dat', 'unins000.msg', 'unins000.ini'}
     shutil.copytree(origin, app, ignore=lambda d, files: [f for f in files if f.lower() in exclude])
-    (root / 'Data' / 'Profile').mkdir(parents=True)
+    if meta.get('portable_data_layout') == 'windows-appdata-mirror-v2':
+        (root / 'Data' / 'Local' / 'Ardia' / 'User Data').mkdir(parents=True)
+        (root / 'Data' / 'Roaming' / 'Ardia').mkdir(parents=True)
+    elif meta.get('portable_data_layout') == 'legacy-profile-v1':
+        (root / 'Data' / 'Profile').mkdir(parents=True)
+    else:
+        die('Invalid selected portable profile layout')
     (root / 'Other' / 'Source').mkdir(parents=True)
     if pe_machine(app / 'Ardia.exe') != {'x64': 0x8664, 'arm64': 0xAA64}[meta['arch']]:
         die('Wrong staged application architecture')
@@ -255,6 +265,9 @@ Start=ArdiaPortable.exe
         launcher_options.validate_manifest(launcher_opts)
         if meta['launcher_flags_fingerprint'] != launcher_opts['fingerprint']:
             die('Launcher options fingerprint differs from identity')
+        layout = data_layout.validate_manifest(meta.get('data_layout'))
+        if meta.get('data_layout_fingerprint') != layout['fingerprint'] or meta.get('portable_data_layout') != layout['layout']:
+            die('Compiled layout identity mismatch')
     # Keep source attribution in final package.
     source_files = ['LICENSE', 'LICENSE.Apache-2.0', 'NOTICE']
     for filename in source_files:
@@ -263,15 +276,25 @@ Start=ArdiaPortable.exe
     writejson(args.identity, meta)
     if launcher_opts:
         writejson(root / 'Other' / 'Source' / 'launcher-options.json', launcher_opts)
+    if meta['package_revision'] == REVISION:
+        writejson(root / 'Other' / 'Source' / 'data-layout.json', meta['data_layout'])
     shutil.copy2(args.identity, root / 'Other' / 'Source' / 'build-identity.json')
+    manual = Path(__file__).resolve().parents[1] / 'docs' / 'UPGRADE-AND-LINKS.md'
+    if not manual.is_file(): die('Missing data-migration/link safety manual')
+    shutil.copy2(manual, root / 'Other' / 'Source' / 'UPGRADE-AND-LINKS.md')
     (root / 'README.txt').write_text(
         'Ardia Portable (Unofficial)\n'
         'Start ArdiaPortable.exe at the root. Never start App\\Ardia\\Ardia.exe directly.\n'
-        'Data\\Profile holds the Chromium profile, history, sessions and extensions.\n'
+        + ('Selected data layout: ' + meta['portable_data_layout'] + '\n')
+        + ('Windows-style: Data\\Local\\Ardia\\User Data and Data\\Roaming\\Ardia.\n'
+           if meta['portable_data_layout'] == 'windows-appdata-mirror-v2'
+           else 'Legacy-style: Data\\Profile holds browser profile and Ardia data.\n')
+        + 'Existing Data is never automatically migrated; a mirror build honors a populated b1r5 Data\\Profile.\n'
         'Do not set this browser as Windows default or enable auto-start/update.\n'
         'Windows DPAPI-protected credentials may not migrate between accounts/computers.\n'
         'Browser crashes, Windows notification caches, OS history, downloads and user-approved\n'
         'default-browser registrations may still leave host traces.\n'
+        'The builder documents safe upgrades and links in Other\\Source\\UPGRADE-AND-LINKS.md.\n'
         'See Other\\Source and the kit documentation for licenses and limits.\n', encoding='utf-8')
     if launcher_opts:
         with (root / 'README.txt').open('a', encoding='utf-8') as f:
@@ -288,10 +311,23 @@ def validate(args):
     meta = json.loads(Path(args.identity).read_text(encoding='utf-8'))
     must = ['ArdiaPortable.exe', 'App/AppInfo/appinfo.ini', 'App/AppInfo/appicon.ico',
             'App/AppInfo/appicon_16.png', 'App/AppInfo/appicon_32.png',
-            'App/Ardia/Ardia.exe', 'App/Ardia/chrome.dll', 'Data/Profile',
+            'App/Ardia/Ardia.exe', 'App/Ardia/chrome.dll',
+            'Data/Local/Ardia/User Data', 'Data/Roaming/Ardia',
             'Other/Source/LICENSE', 'Other/Source/NOTICE', 'Other/Source/build-identity.json']
+    # A previously published b1r5 ZIP may still be passed to packaging-only.
+    # Its compiled launcher uses the legacy Data/Profile layout and must NOT be
+    # relabeled as though it used the b1r6 mirrored profile path.
+    layout = meta.get('portable_data_layout', 'legacy-profile-v1')
+    if layout not in ('windows-appdata-mirror-v2', 'legacy-profile-v1'):
+        die('Unknown portable data layout in build identity')
+    if layout == 'legacy-profile-v1':
+        must = [x for x in must if not x.startswith('Data/')] + ['Data/Profile']
+    elif meta.get('package_revision') not in ('b1r6', REVISION):
+        die('Unrecognized package revision for mirrored profile layout')
     for rel in must:
         if not (root / rel).exists(): die('Missing required staged path: ' + rel)
+    if layout == 'windows-appdata-mirror-v2' and (root / 'Data' / 'Profile').exists():
+        die('Mirrored ZIP unexpectedly includes legacy Data/Profile')
     if meta.get('package_revision') == REVISION:
         actual_options = launcher_options.validate_manifest(meta.get('launcher_options'))
         if meta.get('launcher_flags_fingerprint') != actual_options['fingerprint']:
@@ -299,6 +335,13 @@ def validate(args):
         options_file = root / 'Other' / 'Source' / 'launcher-options.json'
         if launcher_options.load_manifest(options_file) != actual_options:
             die('Portable launcher options manifest differs from package identity')
+        layout_data = data_layout.validate_manifest(meta.get('data_layout'))
+        if layout_data['layout'] != layout or layout_data['fingerprint'] != meta.get('data_layout_fingerprint'):
+            die('Selected layout identity mismatch')
+        if data_layout.load_manifest(root / 'Other' / 'Source' / 'data-layout.json') != layout_data:
+            die('Compiled layout manifest differs from package identity')
+        other_layout = root / ('Data/Profile' if layout == 'windows-appdata-mirror-v2' else 'Data/Local/Ardia/User Data')
+        if other_layout.exists(): die('New b1r7 package contains both data layout roots')
     for filename in ['ArdiaPortable.exe', 'App/Ardia/Ardia.exe']:
         if pe_machine(root / filename) != {'x64': 0x8664, 'arm64': 0xAA64}[meta['arch']]:
             die('Wrong PE machine: ' + filename)
@@ -332,14 +375,19 @@ def makezip(args):
         bad = z.testzip()
         if bad: die('ZIP CRC failure: ' + bad)
         names = z.namelist()
-        if root.name + '/Data/Profile/' not in names: die('Empty portable profile directory missing in ZIP')
+        if (root / 'Data' / 'Profile').is_dir():
+            folders = ('Data/Profile/',)
+        else:
+            folders = ('Data/Local/Ardia/User Data/', 'Data/Roaming/Ardia/')
+        for folder in folders:
+            if root.name + '/' + folder not in names: die('Empty portable data directory missing in ZIP: ' + folder)
     print('Validated ZIP', out, 'SHA256', sha256(out))
 
 
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
-    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--version', default=''); r.add_argument('--launcher-options', required=True)
+    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--version', default=''); r.add_argument('--launcher-options', required=True); r.add_argument('--data-layout', required=True)
     a = sub.add_parser('acquire'); a.add_argument('--identity', required=True); a.add_argument('--out', required=True)
     i = sub.add_parser('install-ci'); i.add_argument('--identity', required=True); i.add_argument('--installer', required=True); i.add_argument('--out', required=True)
     s = sub.add_parser('stage'); s.add_argument('--identity', required=True); s.add_argument('--install', required=True); s.add_argument('--launcher', required=True); s.add_argument('--out', required=True)

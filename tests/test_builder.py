@@ -68,18 +68,20 @@ class BuilderTests(unittest.TestCase):
     def test_zip_preserves_nested_empty_directories(self):
         import argparse
         with tempfile.TemporaryDirectory() as d:
-            root=Path(d,'ArdiaPortable'); (root/'Data/Profile/Empty/Inner').mkdir(parents=True)
+            root=Path(d,'ArdiaPortable'); (root/'Data/Local/Ardia/User Data/Empty/Inner').mkdir(parents=True)
+            (root/'Data/Roaming/Ardia').mkdir(parents=True)
             (root/'README.txt').write_text('fixture')
             out=Path(d,'out.zip')
             r.makezip(argparse.Namespace(root=str(root),out=str(out)))
             with zipfile.ZipFile(out) as z:
-                self.assertIn('ArdiaPortable/Data/Profile/Empty/Inner/',z.namelist())
+                self.assertIn('ArdiaPortable/Data/Local/Ardia/User Data/Empty/Inner/',z.namelist())
+                self.assertIn('ArdiaPortable/Data/Roaming/Ardia/',z.namelist())
     def test_launcher_flags_defined_once_and_user_data_stays_prelaunch(self):
         main = (ROOT/'launcher/main.cpp').read_text(encoding='utf-8')
         flags = (ROOT/'launcher/launch_flags.h').read_text(encoding='utf-8')
         self.assertIn('ARDIA_PORTABLE_DEFAULT_FLAGS', main)
         self.assertIn('L" --user-data-dir=" + quote(profile)', main)
-        self.assertIn('SetEnvironmentVariableW(L"ARDIA_DATA_DIR", profile.c_str())', main)
+        self.assertIn('SetEnvironmentVariableW(L"ARDIA_DATA_DIR", ardiaData.c_str())', main)
         self.assertLess(main.index('SetEnvironmentVariableW(L"ARDIA_DATA_DIR"'), main.index('CreateProcessW('))
         for sw in ('--disable-ardia-update', '--no-default-browser-check',
                    '--disable-logging', '--disable-breakpad', '--disable-machine-id'):
@@ -97,7 +99,7 @@ class BuilderTests(unittest.TestCase):
             m = re.search(pattern, block)
             self.assertIsNotNone(m, key)
             self.assertEqual(m.group(1), 'true' if default else 'false')
-        self.assertEqual(block.count('        type: boolean'), 8)
+        self.assertEqual(block.count('        type: boolean'), 9)
 
     def test_flags_combinations_compile_to_exact_allowlisted_strings(self):
         for key, switch, default, _status in opts.FLAGS:
@@ -159,10 +161,10 @@ class BuilderTests(unittest.TestCase):
         self.assertLess(workflow.index('python scripts/launcher_options.py'),
                         workflow.index('./scripts/build-launcher.ps1'))
         self.assertIn(' --launcher-options work/launcher-options.json', workflow)
-        self.assertIn('b1r5_f$($env:PKG_OPTIONS_ID).zip', workflow)
-        self.assertIn('package-revision: b1r5-f${{ env.PKG_OPTIONS_ID }}', workflow)
+        self.assertIn('b1r7_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip', workflow)
+        self.assertIn('package-revision: b1r7-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', workflow)
         self.assertIn('PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)', workflow)
-        self.assertEqual(workflow.count('type: boolean'), 8)
+        self.assertEqual(workflow.count('type: boolean'), 9)
 
     def test_packaging_only_reuses_existing_compiled_switches(self):
         text = (ROOT/'.github/workflows/package-only.yml').read_text()
@@ -192,11 +194,14 @@ class BuilderTests(unittest.TestCase):
                 manifest = opts.manifest_for(selections)
                 options_file = Path(d, 'flags.json')
                 options_file.write_text(json.dumps(manifest), encoding='utf-8')
+                from data_layout import manifest_for as layout_manifest_for
+                layout_file = Path(d, 'data-layout.json')
+                layout_file.write_text(json.dumps(layout_manifest_for(True)), encoding='utf-8')
                 identity_file = Path(d, 'identity.json')
-                r.resolve(argparse.Namespace(launcher_options=str(options_file), identity=str(identity_file), arch='x64', version=''))
+                r.resolve(argparse.Namespace(launcher_options=str(options_file), data_layout=str(layout_file), identity=str(identity_file), arch='x64', version=''))
                 identity = json.loads(identity_file.read_text(encoding='utf-8'))
                 self.assertEqual(identity['launcher_options'], manifest)
-                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r5-f' + manifest['fingerprint']))
+                self.assertTrue(identity['release_tag_for_builder'].endswith('b1r7-f' + manifest['fingerprint'] + '-d' + layout_manifest_for(True)['fingerprint']))
                 results.append(identity['release_tag_for_builder'])
             self.assertNotEqual(results[0], results[1])
 
@@ -212,15 +217,21 @@ class BuilderTests(unittest.TestCase):
                 file = root/rel
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_bytes(b'MZ')
-            (root/'Data/Profile').mkdir(parents=True)
+            (root/'Data/Local/Ardia/User Data').mkdir(parents=True)
+            (root/'Data/Roaming/Ardia').mkdir(parents=True)
             (root/'App/AppInfo/appinfo.ini').write_text('[Details]\nAppID=ArdiaBrowserPortableCommunity\n[Control]\nStart=ArdiaPortable.exe\n')
             manifest = opts.manifest_for(opts.DEFAULTS)
-            meta = {'arch': 'x64', 'package_revision': 'b1r5', 'launcher_options': manifest,
+            from data_layout import manifest_for as layout_manifest_for
+            layout = layout_manifest_for(True)
+            meta = {'arch': 'x64', 'package_revision': 'b1r7',
+                    'data_layout': layout, 'data_layout_fingerprint': layout['fingerprint'],
+                    'portable_data_layout': 'windows-appdata-mirror-v2', 'launcher_options': manifest,
                     'launcher_flags_fingerprint': manifest['fingerprint'],
                     'upstream_app_exe_sha256': r.sha256(root/'App/Ardia/Ardia.exe'),
                     'launcher_sha256': r.sha256(root/'ArdiaPortable.exe')}
             identity = Path(d,'identity.json'); identity.write_text(json.dumps(meta))
             (root/'Other/Source/launcher-options.json').write_text(json.dumps(manifest))
+            (root/'Other/Source/data-layout.json').write_text(json.dumps(layout))
             with patch.object(r,'pe_machine',return_value=0x8664):
                 r.validate(argparse.Namespace(identity=str(identity),root=str(root)))
                 broken = dict(manifest)

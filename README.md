@@ -1,5 +1,67 @@
-# Ardia Windows Pre-release — PortableApps Builder Kit b1r5
+# Ardia Windows Pre-release PortableApps Builder Kit b1r7
 
+## NEW: Workflow checkbox for data structure (b1r7)
+
+**You can now build either of TWO real application-specific data layouts.**
+Actions > Build Ardia Windows Pre-release PortableApps > Run workflow:
+
+| Checkbox | Default | Freshly built package layout | Intended use |
+|---|---|---|---|
+| `windows_style_data_folders` **checked** | **YES** | `ArdiaPortable\Data\Local\Ardia\User Data` + `ArdiaPortable\Data\Roaming\Ardia` | Match normal Windows Ardia `%LOCALAPPDATA%\Ardia` and `%APPDATA%\Ardia`; optional *manual* host-to-portable junctions |
+| `windows_style_data_folders` **unchecked** | NO | `ArdiaPortable\Data\Profile` | Continue the earlier b1r5 single-profile layout without splitting data |
+
+This choice is **compiled into the native C++ root launcher** at build time, not merely used as an installer naming convention. Both `--user-data-dir` and `ARDIA_DATA_DIR` receive the selected path *before* launching Ardia. In the Windows-style option, `APPDATA` and `LOCALAPPDATA` are also supplied to the browser process and its descendants. Those per-child environment variables cannot intercept all Windows known-folder API writes, shell state, or updater activity: Windows runtime testing remains necessary.
+
+**Data safety when switching modes:**
+
+- Both modes are entirely inside PortableApps `Data` on a NEW install; the output ZIP contains only the selected layout, including its empty directories.
+- For a populated older `Data\Profile` installation, a Windows-style build preserves and continues opening that old profile unchanged rather than silently moving it. A truly new mirrored profile requires *explicit* backed-up migration or a fresh installation.
+- A legacy-style build **refuses to run** when it detects existing Windows-style browser or Ardia application state. If both layouts contain data, BOTH builds refuse to merge them. Keep the matching layout when upgrading a used profile.
+- The launcher never deletes, moves or overwrites old profiles and does not automatically make junctions, registry entries, or shortcuts.
+- If you want the manual installed-to-portable junctions demonstrated in `docs/UPGRADE-AND-LINKS.md`, build with this checkbox **checked**, start a genuinely fresh mirror profile, test it first, and follow the manual backup and linking instructions. Never run installed and portable Ardia concurrently against linked profiles.
+- Changing this checkbox means **build a NEW ZIP/installer**. It does not toggle an already compiled `.exe`. The *Packaging only* workflow keeps the layout of the original validated ZIP.
+
+Build identity and recovery: new `Other/Source/data-layout.json` (validated schema and fingerprint) and the layout hash appear in the release tag, ZIP filename and installer revision. The workflow checks the selected layout marker in the compiled PE and uses layout-aware fresh install/reinstall tests on the hosted Windows runner.
+
+**The other seven launcher switch checkboxes, safe `--disable-encryption-win` default OFF, `windows-2022` MSVC build procedure, pinned Package Builder and Release Publisher, and browser extraction method remain unchanged.** The extraction method is an upstream Windows installer on an isolated CI runner, so this still is *not* a source-built browser or an official developer portable release. A passing static test or CI package build alone does not verify zero host traces, actual profile portability, or Windows GUI behavior.
+
+### b1r7 quick setup / GitHub Desktop
+
+1. Download and extract the entire b1r7 builder ZIP over your existing **builder repository root**, including `.github`, **not** over your installed portable browser folder.
+2. In GitHub Desktop, commit `Add optional Windows-style Ardia Data layout checkbox (b1r7)` and push.
+3. Open Actions > **Build Ardia Windows Pre-release PortableApps** > **Run workflow**.
+4. Keep **Windows-style Data folders** checked to create Local/Roaming folders compatible with the screenshot; uncheck it for the original single `Data\Profile` structure. Set the other seven checkboxes as before.
+5. Download the generated ZIP or PortableApps-style installer from a successful release. Back up the complete existing portable `Data` directory *before* any upgrade. Do not copy either builder ZIP or a new blank `Data` on top of your user data.
+
+## Older implementation history (b1r6 and earlier)
+
+
+
+## b1r6: Installed-Ardia-compatible Data layout (November 19, 2026)
+
+The user's screenshots identify **two installed Windows paths** (`%LOCALAPPDATA%\Ardia` and `%APPDATA%\Ardia`). The b1r6 **fresh-install** PortableApps layout mirrors these safely:
+
+```text
+ArdiaPortable/
+  ArdiaPortable.exe
+  App/Ardia/...
+  Data/
+    Local/
+      Ardia/
+        User Data/        <- Chromium profiles, history, extensions
+        (Ardia app files are written here as supported)
+    Roaming/
+      Ardia/              <- roaming config/schema files if app respects child APPDATA
+  Other/Source/UPGRADE-AND-LINKS.md
+```
+
+Before launch the C++ wrapper sets `--user-data-dir` to the real portable `Data\Local\Ardia\User Data`, `ARDIA_DATA_DIR` to real portable `Data\Local\Ardia`, and for **new layout only** uses inherited process-local `LOCALAPPDATA=Data\Local` and `APPDATA=Data\Roaming`. These are **per-process** environment values, not global Windows settings, and do **not** intercept every Windows known-folder API. There is **no** unauthorized copying or deleting of installed `%LOCALAPPDATA%\Ardia` or `%APPDATA%\Ardia` content. Exact roaming behavior remains to be tested on Windows.
+
+**Safe existing b1r5 upgrades:** b1r5 stored app and Chromium state together in `Data\Profile`. If this folder contains **anything**, b1r6 continues using it unchanged, including the old environment behavior. The launcher **refuses to run** if both the old and new Chromium profile locations contain data; it never guesses which should win. To adopt the new mirror layout, back up `Data`, close all Ardia processes, rename legacy `Data\Profile` to a safe backup folder, and start a new profile. Do not attempt to split or import unknown Chromium files automatically. Read `docs/UPGRADE-AND-LINKS.md` before any manual migration.
+
+**Linking is opt-in and host-affecting.** The safe link direction (after separate backups and after original installed paths cease to exist) is from the installed Windows `%LOCALAPPDATA%\Ardia` and `%APPDATA%\Ardia` **to** these portable directories. Never automatically link the portable `Data` directories **to** an installed Ardia profile, since that breaks portable isolation. Never run both browser copies simultaneously while sharing a profile; this can corrupt SQLite session/history state. The builder **does not create or remove junctions**. With optional host junctions present, the launcher refuses to start when it detects a different running `Ardia.exe` process; it cannot prevent the installed browser from being started later.
+
+All seven b1r5 workflow argument checkboxes, `windows-2022` compiler setup, pinned shared actions and b1r5 safety behavior otherwise remain present. **Local static tests do not establish that actual Ardia Windows runtime fully uses these folders.**
 
 ### Select launcher arguments with checkboxes (b1r5)
 
@@ -37,7 +99,7 @@ After MSVC compilation, `scripts/verify_launcher_flags.py` checks the actual lau
 - Add regression tests for the self-hosted case and missing hosted-runner marker. Preserve the original application, launcher, installer engine and publisher wiring.
 - No real browser runtime claims: repeat GitHub Actions Windows build and interactive acceptance tests.
 
-**Selected mode: PORTABLEAPPS only**. Builds `ArdiaPortable.exe` as a **real C++/MSVC PE**, supplies `App/Ardia`, `Data/Profile`, PortableApps metadata and upstream icons, creates a ready-to-extract ZIP, invokes the separately pinned shared PortableApps-style NSIS installer, then invokes the separately pinned release publisher twice (dry-run and actual publish).
+**Selected mode: PORTABLEAPPS only**. Builds `ArdiaPortable.exe` as a **real C++/MSVC PE**, supplies `App/Ardia`, `Data/Local/Ardia/User Data` and `Data/Roaming/Ardia`, PortableApps metadata and upstream icons, creates a ready-to-extract ZIP, invokes the separately pinned shared PortableApps-style NSIS installer, then invokes the separately pinned release publisher twice (dry-run and actual publish).
 
 **Not an official PortableApps.com package or Ardia release.** The Windows upstream build is **unsigned**. This source kit holds no application binary and fetches the exact published official pre-release Windows executable on demand.
 
@@ -55,7 +117,7 @@ After MSVC compilation, `scripts/verify_launcher_flags.py` checks the actual lau
 
 ## Portable storage and host safety
 
-The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe**, it creates **Data\\Profile**, sets `ARDIA_DATA_DIR`, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Profile"`. No global `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` redirection is attempted. The automatic command line is generated into `launcher/launch_flags.h` from checked workflow options, with verified and unverified flags clearly marked. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
+The root launcher calculates its actual folder using `GetModuleFileNameW`. Before launching **App\\Ardia\\Ardia.exe** on a **fresh** b1r6 profile, it creates **Data\\Local\\Ardia\\User Data** and **Data\\Roaming\\Ardia**, sets `ARDIA_DATA_DIR` to the portable `Data\\Local\\Ardia`, sets the child environment's `LOCALAPPDATA` and `APPDATA` to the respective portable parent folders, and passes Chromium's `--user-data-dir="<actual portable root>\\Data\\Local\\Ardia\\User Data"`. Existing populated b1r5 `Data\\Profile` remains in legacy compatibility mode; the launcher refuses conflicting nonempty profiles. No **global** `%APPDATA%`, `%LOCALAPPDATA%` or `%TEMP%` changes are made. The automatic command line is generated into `launcher/launch_flags.h` from checked workflow options, with verified and unverified flags clearly marked. Additional launcher arguments are forwarded, the current directory is set to `App\\Ardia`, and it waits for the application executable to close and for exact-path Ardia processes to finish. A per-folder mutex prevents accidental simultaneous launches. It never kills processes or deletes other applications' files.
 
 **Critical limitation:** At the time of kit creation, Windows **actual runtime confirmation** that all Ardia-specific stores respect these settings is **not available**. Chromium's browser profile is directed to Data before initialization; browser-created OS notification caches, registered protocols, automatic updater processes and other non-Chromium stores may still touch Windows. The package does **not** claim total host cleanliness and does **not** run broad TraceGuard/ShellGuard cleanup against a potentially installed Ardia. Source-evidenced installer registrations are avoided because the user runs the extracted app, not the upstream installer; users should **not choose Make Default Browser** or enable native updates/autostart. Preserve all detected unknown host state pending attribution rather than deleting it.
 
@@ -66,12 +128,12 @@ The root launcher calculates its actual folder using `GetModuleFileNameW`. Befor
 1. On github.com create a **new separate** repository named `Ardia-Portable-Builder`, public or private as desired. Do **not** fork upstream Ardia or change an installed browser.
 2. In **GitHub Desktop**, choose **File → Clone repository** and clone your new empty repository. If you prefer, create a local repository in GitHub Desktop and **Publish repository**.
 3. Download this kit ZIP, extract all files to the **repository root**. Make sure hidden `.github/workflows/` is included.
-4. In GitHub Desktop, commit with summary **`Initial Ardia Windows prerelease PortableApps builder b1r5`**. Push via **Push origin**.
+4. In GitHub Desktop, commit with summary **`Adjust Ardia PortableApps Data layout to mirror Windows Local/Roaming (b1r6)`**. Push via **Push origin**.
 5. Open the repository on github.com → **Actions** → **Build Ardia Windows Pre-release PortableApps** → **Run workflow**. Keep `x64` for most Windows PCs; select `arm64` only for ARM Windows PCs. Leave `requested_version` empty for current published Windows alpha. `publish=true` publishes if checks pass.
 6. In the Actions run, inspect `Resolve`, `Download`, `Compile`, `Stage`, `ZIP`, `Installer`, **dry-run publisher** and **actual publisher** steps separately. A failed step prevents publication.
 7. From your builder repository's **Releases**, download the `.zip` (ready to extract) or `.paf.exe` (PortableApps-*style* installer). The release publisher also creates `SHA256SUMS.txt`.
 8. For ZIP: extract its `ArdiaPortable` folder somewhere writable, then double-click the **root** `ArdiaPortable.exe`. For PortableApps Platform, put the folder in your PortableApps directory and refresh the menu. Do **not** launch `App\\Ardia\\Ardia.exe` directly.
-9. Settings/bookmarks/sessions/extensions should live in `ArdiaPortable\\Data\\Profile`; confirm through the first-run acceptance tests before relying on it.
+9. For fresh b1r6 installs, test settings/bookmarks/sessions/extensions under `ArdiaPortable\\Data\\Local\\Ardia\\User Data`, plus app state in `Data\\Local\\Ardia` and any roaming config in `Data\\Roaming\\Ardia`. Existing populated b1r5 `Data\\Profile` stays in legacy compatibility mode. See `docs/UPGRADE-AND-LINKS.md`.
 10. To upgrade: **fully close Ardia and the launcher**, make a backup of the entire `Data` folder, replace the `App`, `Other` and root launcher files from the new ZIP, and leave `Data` intact. Never copy `Data` from an empty new ZIP over existing profile data.
 11. To roll back: back up the current `Data`, restore the previous binaries; if the browser's data schema changed, restore the **matching backup of Data** from that previous version rather than attempting to open a newer profile with an older Chromium engine.
 12. **Packaging only:** After a validated ZIP is published, Actions → **Packaging only** → provide the existing release tag, exact ZIP filename, and a **new** output tag beginning `portable-`. This produces a fresh installer without downloading/rebuilding upstream.
@@ -103,6 +165,7 @@ Using a disposable Windows test account **without important pre-existing browser
 - `scripts/verify-existing-zip.py` — zip-slip/symlink/CRC/SHA check for packaging only.
 - `tests/test_builder.py` — isolated static/safety fixtures, not application runtime simulation.
 - `docs/AUDIT.md` — paths, findings, evidence stages and limitations.
+- `docs/UPGRADE-AND-LINKS.md` — b1r5 preservation, safe new profile adoption and optional manually approved installed-Ardia junction instructions. Also distributed in `Other/Source` of the generated package.
 
 ## Troubleshooting
 
@@ -112,7 +175,7 @@ Using a disposable Windows test account **without important pre-existing browser
 - **`Missing icon`**: upstream icon changed; update the specific path after inspection; do not fabricate a brand icon.
 - **`Source commit differs`**: Windows alpha and source prerelease tags disagree. Stop until source provenance verified.
 - **`MSVC` failure**: `vswhere` selects an installed VS 2026/2022 C++ instance; ensure `cmake --help` lists the matching generator. Inspect actual C++ errors in Actions; do not publish dummy EXE.
-- **`Windows startup returns immediately`**: open from root launcher, verify profile folder writable, inspect app and Event Viewer logs. Do not delete profile or switch to installed Ardia profile.
+- **`Windows startup returns immediately`**: open from root launcher, verify both Data\Local and Data\Roaming writable, inspect app and Event Viewer logs. If two nonempty profile locations are present, back up Data and resolve the conflict without deletion. Do not switch to an installed Ardia profile automatically.
 - **`Launcher stays running`**: it holds the per-folder lock while exact-path Ardia processes remain. Close all portable browser windows and subprocesses normally.
 - **`Installer action fails`**: the independently validated ZIP is uploaded as a short-lived 3-day **Actions workflow artifact**, where available, rather than silently discarded. Release publication stays blocked. The upload is recovery-only, not a publisher replacement.
 - **`Rollback`**: if a newer Chromium schema changed Data, use the matching older Data backup.

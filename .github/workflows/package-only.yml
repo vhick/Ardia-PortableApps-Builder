@@ -63,7 +63,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r5-packageonly
+          package-revision: b1r7-packageonly
       - name: Check installer PE
         run: ./scripts/verify-installer.ps1 -Installer '${{ steps.upb.outputs.installer-file }}'
       - name: Publisher dry-run

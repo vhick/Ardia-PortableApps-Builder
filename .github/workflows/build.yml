@@ -11,6 +11,10 @@ on:
         description: Optional exact nightly version currently published as Windows alpha (blank = current)
         type: string
         default: ''
+      windows_style_data_folders:
+        description: 'Use Windows-style Data/Local/Ardia and Data/Roaming/Ardia (OFF = original Data/Profile)'
+        type: boolean
+        default: true
       no_default_browser_check:
         description: 'Include --no-default-browser-check (recommended)'
         type: boolean
@@ -81,18 +85,28 @@ jobs:
           $options = Get-Content -LiteralPath work/launcher-options.json -Encoding UTF8 -Raw | ConvertFrom-Json
           "Ardia launcher options fingerprint: $($options.fingerprint)" >> $env:GITHUB_STEP_SUMMARY
           "Enabled arguments (not all are verified by Ardia): $($options.enabled_arguments -join ', ')" >> $env:GITHUB_STEP_SUMMARY
+      - name: Generate compiled data-layout selection from workflow checkbox
+        env:
+          ARDIA_WINDOWS_STYLE_DATA: ${{ inputs.windows_style_data_folders }}
+        run: |
+          python scripts/data_layout.py --out work/data-layout.json --header launcher/data_layout.h
+          if ($LASTEXITCODE -ne 0) { throw 'Data layout generation failed' }
+          $layout = Get-Content -LiteralPath work/data-layout.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          "Selected Data layout: $($layout.layout)" >> $env:GITHUB_STEP_SUMMARY
       - name: Resolve immutable source identity from official Windows alpha release
         env:
           ARCH: ${{ inputs.architecture }}
           REQUEST_VERSION: ${{ inputs.requested_version }}
         run: |
-          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --launcher-options work/launcher-options.json --identity work/identity.json
+          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --launcher-options work/launcher-options.json --data-layout work/data-layout.json --identity work/identity.json
           if ($LASTEXITCODE -ne 0) { throw 'Release resolver failed' }
           $m = Get-Content -LiteralPath work/identity.json -Raw -Encoding UTF8 | ConvertFrom-Json
           "PKG_VERSION=$($m.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_TAG=$($m.release_tag_for_builder)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_ARCH=$($m.arch)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_OPTIONS_ID=$($m.launcher_flags_fingerprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_LAYOUT_ID=$($m.data_layout_fingerprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_LAYOUT_NAME=$($m.portable_data_layout)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Refuse duplicate builder release identity before large downloads
         if: ${{ inputs.publish }}
         run: |
@@ -118,7 +132,7 @@ jobs:
           ./scripts/build-launcher.ps1 -Architecture $env:PKG_ARCH
       - name: Verify compiled PE contains selected switches and excludes unchecked switches
         run: |
-          python scripts/verify_launcher_flags.py --exe build/launcher/Release/ArdiaPortable.exe --manifest work/launcher-options.json
+          python scripts/verify_launcher_flags.py --exe build/launcher/Release/ArdiaPortable.exe --manifest work/launcher-options.json --data-layout work/data-layout.json
           if ($LASTEXITCODE -ne 0) { throw 'Compiled launcher switch selection differs from workflow checkboxes' }
       - name: Stage ArdiaPortable with separate Data and licensing
         run: |
@@ -130,7 +144,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r5_f$($env:PKG_OPTIONS_ID).zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r7_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -143,7 +157,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r5-f${{ env.PKG_OPTIONS_ID }}
+          package-revision: b1r7-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -154,7 +168,7 @@ jobs:
           "Installer PE/hash validation passed; execution verified by separate test step." >> $env:GITHUB_STEP_SUMMARY
       - name: Headless installer fresh-install and reinstall Data-preservation smoke test
         run: |
-          ./scripts/test-installer.ps1 -Installer '${{ steps.installer.outputs.installer-file }}'
+          ./scripts/test-installer.ps1 -Layout $env:PKG_LAYOUT_NAME -Installer '${{ steps.installer.outputs.installer-file }}'
           "Installer fresh install + same-version reinstall preserved a seeded Data marker and nested empty directories; cross-version upgrade, GUI and rollback still unverified." >> $env:GITHUB_STEP_SUMMARY
       - name: Shared release publisher mandatory dry-run
         uses: vhick/portable-release-publisher@v1.1.1
@@ -163,7 +177,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r5 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r7 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -175,7 +189,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r5 flags-${{ env.PKG_OPTIONS_ID }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r7 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'

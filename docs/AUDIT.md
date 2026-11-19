@@ -1,4 +1,12 @@
-# Ardia Windows prerelease b1r5 — source/host/storage findings (2026-11-19)
+# b1r7 dual-layout addendum (2026-11-19)
+
+BUILD-TIME CONTROL (STATIC-IMPLEMENTED): `workflow_dispatch.inputs.windows_style_data_folders` is a real Boolean checkbox. `scripts/data_layout.py` generates a C++ header and audited JSON manifest. The root launcher compiles its layout choice into the binary. `scripts/release.py` stages/validates exactly one initial Data hierarchy and includes the layout identity in GitHub release tags. Two selected outputs share upstream program binaries but keep independent fresh-profile paths. No OS registry/junction modifications occur automatically. An existing b1r5 `Data\Profile` retains compatibility fallback with the mirrored build; the legacy-selected build refuses to overwrite an existing mirrored profile. App-only/roaming existing state is also checked, even if User Data is empty.
+
+RUNTIME STATUS: Windows compilation of b1r7 and actual first-run browse/save/quit have NOT been observed yet. This is NOT an upstream source build or an official portable Ardia asset (original pinned upstream Windows installer extraction method unchanged). The Chromium `--user-data-dir` feature is documented upstream; per-process APPDATA variables do NOT prove all Windows KnownFolder/notification writes remain within Data. Manual Windows testing is required.
+
+---
+
+# Ardia Windows prerelease b1r6 — source/host/storage findings (2026-11-19)
 
 ## Source evidence examined
 
@@ -15,7 +23,7 @@
 
 | Finding | Evidence level | Source evidence / path | Responsible component | Native remedy (not implemented) | Selected PortableApps remedy | Data safety | Functionality tradeoff | Test / limit |
 |---|---|---|---|---|---|---|---|---|
-| Browser user profile | SOURCE-INSPECTED for installed default path, INFERRED for flag effectiveness in Ardia Windows | `scripts/windows/installer/Ardia.iss`, `%LOCALAPPDATA%\\Ardia\\User Data` | Upstream/Chromium | N/A | Launcher sets `ARDIA_DATA_DIR` and `--user-data-dir` before starting Ardia | Never overwrite an installed profile | Credentials are DPAPI-bound | Manual browser persistence/ProcMon acceptance required |
+| Browser user profile | SOURCE-INSPECTED for installed default path, INFERRED for flag effectiveness in Ardia Windows | `scripts/windows/installer/Ardia.iss`, `%LOCALAPPDATA%\\Ardia\\User Data` | Upstream/Chromium | N/A | Launcher sets `ARDIA_DATA_DIR=Data/Local/Ardia`, `--user-data-dir=Data/Local/Ardia/User Data` and process-local APPDATA/LOCALAPPDATA before starting Ardia; b1r5 legacy profiles are retained unchanged | Never overwrite an installed profile | Credentials are DPAPI-bound | Manual browser persistence/ProcMon acceptance required |
 | Upstream installed app | SOURCE-INSPECTED | `%LOCALAPPDATA%\\Programs\\Ardia`, Inno setup | Upstream installer | N/A | Install only into disposable CI runner and copy app files, not Inno setup | Never run upstream installer on user's host | Portable package not an official install | Exact expected exe/dll validated; installer silent behavior only checked on runner |
 | HKCU associations and protocol registrations | SOURCE-INSPECTED for installer, NOT YET VERIFIED for runtime | `HKCU\\Software\\Classes\\ArdiaHTM`, `HKCU\\Software\\Clients\\StartMenuInternet\\Ardia` and more in `.iss` | Installer, browser | N/A | Do not execute original installer on user's computer; no default browser registration by launcher | Leave existing host registrations alone | Making portable browser default not supported safely | Manual trace needed if user requests shell association |
 | Start Menu/Desktop shortcut | SOURCE-INSPECTED | Inno `.iss` `[Icons]`, `[Tasks]` | Installer | N/A | No upstream shortcut creation; Platform menu can discover root exe | No shortcut harvesting | Platform shortcut behavior still test | Manual shell snapshot |
@@ -25,7 +33,7 @@
 | Browser profile passwords/cookies | INFERRED | Windows DPAPI and Chromium credential design | Chromium+Windows | N/A | Store profile files in Data but never weaken OS encryption | No extraction/decryption/key capture | Logins may not migrate across PCs | Cross-Windows-account acceptance |
 | Downloaded files | INFERRED / user-controlled | Browser Download preferences | Browser + user | N/A | Do not redirect Documents/Downloads automatically | Preserve user file choices | Downloads may land outside package by user choice | Manual download/open confirmation |
 | `%TEMP%`, OS caches and shell history | NOT YET VERIFIED | Windows/Chromium temporary and cache behavior | Framework/Windows | N/A | No global env redirection or destructive cleanup | Keep host untouched | Possible host traces | ProcMon observation before cleanup design |
-| Completely empty directories | STATIC-VALIDATED for ZIP preserving empties | `Data/Profile/` and nested fixture | Package and ZIP | N/A | ZipFile explicit directory entries; Data untouched by upgrade | Nested empty tree preservation | None | ZIP tests only; installer reinstall manual |
+| Completely empty directories | STATIC-VALIDATED for ZIP preserving empties | `Data/Local/Ardia/User Data/`, `Data/Roaming/Ardia/` and nested fixture | Package and ZIP | N/A | ZipFile explicit directory entries; Data untouched by upgrade | Nested empty tree preservation | None | ZIP tests only; installer reinstall manual |
 | Upgrade, rollback and relocation | STATIC-VALIDATED for design; runtime NOT YET VERIFIED | PortableApps root and Data dirs | Launcher+installer | N/A | Back up Data, replace App/Other/launcher only, test moved folders | Existing Data never intentionally overwritten | Older Chromium might not read newer profile | Manual test matrix required |
 
 ## Validation matrix (independent statuses)
@@ -82,3 +90,14 @@ For a given upstream commit and architecture, a 12-character SHA-256 of the cano
 ### b1r5 CI incident observation (2026-11-19)
 
 Actual user-uploaded `logs_120438973352.zip` shows 25 local Python tests passed in CI, the official 0.2.47-nightly.7 x64 installer was fetched and extracted, the upstream icon was prepared, then the launcher MSVC step failed: `No usable Visual Studio C++ toolchain found on hosted runner`. This is not a browser runtime test. The builder now uses `windows-2022` / VS 2022 with explicit C++ tool verification; the package and browser behavior remain unverified.
+
+
+## b1r6 Windows-profile mirror review (from user's November 19 screenshots)
+
+**USER-OBSERVED (normal installed Ardia, NOT portable runtime):**
+- `C:\Users\<user>\AppData\Local\Ardia` contains `config-schema`, `Logs`, `Telemetry`, `User Data`, and app-state JSON such as `session`, `windows-updates`, `launch-guard`, `onboarding`, `switches-cache`.
+- `C:\Users\<user>\AppData\Roaming\Ardia` contains `config.schema` and `theme.schema`.
+
+**STATIC-IMPLEMENTED (b1r6):** new portable packages contain `Data/Local/Ardia/User Data/` and `Data/Roaming/Ardia/`. Per-process `ARDIA_DATA_DIR`, `LOCALAPPDATA`, `APPDATA`, and Chromium `--user-data-dir` are set before `CreateProcessW`. Legacy populated `Data/Profile` continues using b1r5 behavior. Simultaneous nonempty legacy and new Chromium profiles block startup to avoid accidental profile switch/merge. The launcher rejects reparse-point Data directories.
+
+**NOT YET VERIFIED:** Whether Ardia's Windows app uses these environment variables for all `config.schema`, `theme.schema`, Logs/Telemetry, the update checker, browser registration or shell notifications. Windows known-folder APIs can ignore environment overrides. The screenshots alone cannot prove portable writes. Do not run installed and portable Ardia concurrently against the same live browser DB. Read `docs/UPGRADE-AND-LINKS.md` for the manual, opt-in link direction, backups, rollback and the limits of profile migration.

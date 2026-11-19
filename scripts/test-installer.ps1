@@ -1,6 +1,6 @@
 # Headless test on disposable Windows GitHub-hosted runner ONLY.
 # Tests packaged NSIS installer /S and /D semantics from pinned custom-nsis engine.
-param([Parameter(Mandatory=$true)][string]$Installer)
+param([Parameter(Mandatory=$true)][string]$Installer, [ValidateSet('windows-appdata-mirror-v2','legacy-profile-v1')][string]$Layout='windows-appdata-mirror-v2')
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Installer test is GitHub-hosted Windows runner only' }
 $resolved = (Resolve-Path -LiteralPath $Installer).Path
@@ -23,12 +23,20 @@ function Install-Test {
     if (!(Test-Path -LiteralPath (Join-Path $dest 'App/AppInfo/appinfo.ini') -PathType Leaf)) { throw 'Installer did not include metadata' }
 }
 Install-Test
-$empty = Join-Path $dest 'Data/Profile/Empty/Nested/Leaves'
+if ($Layout -eq 'windows-appdata-mirror-v2') {
+    $empty = Join-Path $dest 'Data/Local/Ardia/User Data/Empty/Nested/Leaves'
+    $required = Join-Path $dest 'Data/Roaming/Ardia'
+} else {
+    $empty = Join-Path $dest 'Data/Profile/Empty/Nested/Leaves'
+    $required = Join-Path $dest 'Data/Profile'
+}
+if (!(Test-Path -LiteralPath $required -PathType Container)) { throw 'Installer omitted the selected layout data folder' }
 New-Item -Path $empty -ItemType Directory -Force | Out-Null
 $marker = Join-Path $dest 'Data/profile-preservation-marker-ユニコード.txt'
 [System.IO.File]::WriteAllText($marker, 'Do not overwrite original Data', [System.Text.UTF8Encoding]::new($false))
 $hash = (Get-FileHash -LiteralPath $marker -Algorithm SHA256).Hash
 Install-Test
+if (!(Test-Path -LiteralPath $required -PathType Container)) { throw 'Selected Data layout disappeared on reinstall' }
 if (!(Test-Path -LiteralPath $empty -PathType Container)) { throw 'Completely empty nested Data directory was lost on reinstall' }
 if (!(Test-Path -LiteralPath $marker -PathType Leaf)) { throw 'Seeded user Data disappeared on reinstall' }
 if ((Get-FileHash -LiteralPath $marker -Algorithm SHA256).Hash -ne $hash) { throw 'Seeded user Data was overwritten' }
