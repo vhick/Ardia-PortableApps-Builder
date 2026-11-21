@@ -101,3 +101,12 @@ Actual user-uploaded `logs_120438973352.zip` shows 25 local Python tests passed 
 **STATIC-IMPLEMENTED (b1r6):** new portable packages contain `Data/Local/Ardia/User Data/` and `Data/Roaming/Ardia/`. Per-process `ARDIA_DATA_DIR`, `LOCALAPPDATA`, `APPDATA`, and Chromium `--user-data-dir` are set before `CreateProcessW`. Legacy populated `Data/Profile` continues using b1r5 behavior. Simultaneous nonempty legacy and new Chromium profiles block startup to avoid accidental profile switch/merge. The launcher rejects reparse-point Data directories.
 
 **NOT YET VERIFIED:** Whether Ardia's Windows app uses these environment variables for all `config.schema`, `theme.schema`, Logs/Telemetry, the update checker, browser registration or shell notifications. Windows known-folder APIs can ignore environment overrides. The screenshots alone cannot prove portable writes. Do not run installed and portable Ardia concurrently against the same live browser DB. Read `docs/UPGRADE-AND-LINKS.md` for the manual, opt-in link direction, backups, rollback and the limits of profile migration.
+
+
+## b1r9 channel selection update — 2026-11-21
+
+Official `v0.2.47` is a non-prerelease release (source tag `v0.2.47`). The rolling `windows-alpha` release is separately marked prerelease and currently advertises Windows setup assets even when the underlying version does not contain `nightly`. These are distinct release *channels* and are never conflated.
+
+The b1r9 resolver checks the selected release's actual GitHub `prerelease`, `draft`, `tag_name`, first-party Windows asset name/URL/size, version-tag commit and lockfile identity. For default stable searches it scans GitHub releases, filters non-prerelease releases and numerically chooses the newest stable version WITH a matching Windows installer, or fails explicitly. Exact stable version requests do not fall back to alpha or another version. Exact prerelease requests match the rolling Windows alpha only.
+
+Stable `0.2.47` might not have a Windows installer attached to its GitHub release despite the text in the release notes: do not present Stable as successfully runnable on Windows until asset and runtime checks pass. See `VALIDATION-b1r9.md`.

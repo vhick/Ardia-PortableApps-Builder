@@ -1,14 +1,19 @@
-name: Build Ardia Windows Pre-release PortableApps
+name: Build Ardia Windows PortableApps (Stable or Pre-release)
 on:
   workflow_dispatch:
     inputs:
+      release_channel:
+        description: 'Official GitHub release channel (Stable requires a Windows asset on a non-prerelease release)'
+        type: choice
+        options: [prerelease, stable]
+        default: prerelease
       architecture:
         description: Windows target CPU
         type: choice
         options: [x64, arm64]
         default: x64
       requested_version:
-        description: Optional exact nightly version currently published as Windows alpha (blank = current)
+        description: Optional exact version for selected channel (blank = latest; prerelease = current rolling Windows alpha)
         type: string
         default: ''
       windows_style_data_folders:
@@ -93,14 +98,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Data layout generation failed' }
           $layout = Get-Content -LiteralPath work/data-layout.json -Encoding UTF8 -Raw | ConvertFrom-Json
           "Selected Data layout: $($layout.layout)" >> $env:GITHUB_STEP_SUMMARY
-      - name: Resolve immutable source identity from official Windows alpha release
+      - name: Resolve official release for selected channel; reject missing stable Windows assets
         env:
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
           ARCH: ${{ inputs.architecture }}
           REQUEST_VERSION: ${{ inputs.requested_version }}
         run: |
-          python scripts/release.py resolve --arch $env:ARCH --version "$env:REQUEST_VERSION" --launcher-options work/launcher-options.json --data-layout work/data-layout.json --identity work/identity.json
+          python scripts/release.py resolve --arch $env:ARCH --channel $env:RELEASE_CHANNEL --version "$env:REQUEST_VERSION" --launcher-options work/launcher-options.json --data-layout work/data-layout.json --identity work/identity.json
           if ($LASTEXITCODE -ne 0) { throw 'Release resolver failed' }
           $m = Get-Content -LiteralPath work/identity.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          "PKG_CHANNEL=$($m.release_channel)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Selected upstream release: $($m.release_channel) | $($m.release_tag) | $($m.asset_name)" >> $env:GITHUB_STEP_SUMMARY
           "PKG_VERSION=$($m.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_TAG=$($m.release_tag_for_builder)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_ARCH=$($m.arch)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -112,7 +120,7 @@ jobs:
         run: |
           python scripts/release.py check-tag --tag $env:PKG_TAG
           if ($LASTEXITCODE -ne 0) { throw 'Existing release or GitHub API failure' }
-      - name: Fetch official upstream Windows pre-release setup, verify SHA-256
+      - name: Fetch official Windows setup from chosen release, verify size and SHA-256
         run: |
           python scripts/release.py acquire --identity work/identity.json --out work/Ardia-Setup.exe
           if ($LASTEXITCODE -ne 0) { throw 'Official upstream release download failed' }
@@ -144,7 +152,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r8_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_CHANNEL)_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r9_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -157,7 +165,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r8-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
+          package-revision: b1r9-${{ env.PKG_CHANNEL }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -177,7 +185,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r8 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r9 ${{ env.PKG_CHANNEL }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -189,7 +197,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r8 flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial, prerelease)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r9 ${{ env.PKG_CHANNEL }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'

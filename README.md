@@ -1,3 +1,50 @@
+# Ardia Windows Stable / Pre-release PortableApps Builder Kit b1r9
+
+## New b1r9 option: release channel (Stable or Pre-release)
+
+In GitHub **Actions > Build Ardia Windows PortableApps (Stable or Pre-release) > Run workflow**, choose:
+
+| Setting | Choose | Behavior |
+|---|---|---|
+| `release_channel` | **`prerelease`** (default) | Preserve proven b1r8 behavior: use the exact official **`windows-alpha`** GitHub **pre-release**, currently a rolling Windows alpha. |
+| `release_channel` | **`stable`** | Find latest *non-prerelease GitHub release that itself attaches* a Windows installer for selected CPU; numeric-version sorting. |
+| `requested_version` | Blank (default) | Latest suitable release in the selected channel. For Pre-release, current `windows-alpha` only. |
+| `requested_version` | `0.2.47` | Requires exact version on selected channel. Stable: requires official Windows installer attached to `v0.2.47`; Pre-release: requires `windows-alpha` to currently report that version. |
+| `architecture` | `x64` | Conventional Intel/AMD Windows computers. |
+| `architecture` | `arm64` | Windows ARM systems. |
+| `windows_style_data_folders` | Checked (default) | `Data/Local/Ardia/User Data` and `Data/Roaming/Ardia`. |
+| `windows_style_data_folders` | Unchecked | Original `Data/Profile` layout. |
+| `disable_encryption_win` | Unchecked (default) | Preserve default browser credential protection. |
+
+**Important upstream distinction:** The official [v0.2.47 GitHub release](https://github.com/ardia-browser/ardia/releases/tag/v0.2.47) is a *non-prerelease* release; the separate [Windows alpha release](https://github.com/ardia-browser/ardia/releases/tag/windows-alpha) is officially a *prerelease*, even when it describes the underlying application version as `0.2.47`. The non-prerelease release page has not been independently verified to contain a suitable Windows installer. The Stable choice **must not silently use** the Windows-alpha installer or pretend it is stable. If the requested stable Windows asset is absent, the workflow stops at resolver with an actionable error before downloading or installing anything. It does not publish misleading artifacts. When no exact stable version is requested, it scans official GitHub releases (up to 500 records) and picks the **highest numeric stable version that has a Windows installer** for the selected CPU, if one exists.
+
+The builder does **not** force source branch `main`, manufacture Windows binaries from a Mac release, reuse a macOS binary, or automatically choose the newer but unrelated nightlies. For a reliable build today, select **Pre-release** until the upstream official Stable channel provides a verifiable Windows asset.
+
+### Quick GitHub Desktop update from working b1r8
+
+1. Back up your existing *portable browser's* `Data` directory. Do **not** extract this builder over the portable browser itself.
+2. Extract the complete **b1r9 builder ZIP** into your separate builder **repository root**, replacing old source files, and include the hidden `.github/workflows` folder.
+3. GitHub Desktop commit summary: `Add stable and prerelease Ardia release selection (b1r9)`.
+4. Push origin. Open GitHub repository > Actions > **Build Ardia Windows PortableApps (Stable or Pre-release)** > Run workflow.
+5. Choose `prerelease` for the previously working Windows alpha; choose `stable` only to request a verified non-prerelease Windows installer. Leave `requested_version` blank unless targeting an exact matching version.
+6. Keep the known-good architecture, Windows-style Data checkbox, and seven launch-flag selections. Strongly recommend **unchecking `--disable-encryption-win`**. The `--disable-ardia-update` and `--disable-machine-id` flags are still unverified.
+7. If the chosen channel has an official Windows asset and the workflow succeeds, download the generated `ArdiaPortable_<channel>_<version>_<arch>_b1r9_...zip` and the `.paf.exe` from **Releases**. Read the release manifest under `Other/Source/build-identity.json` for the exact upstream tag, SHA, asset, channel, flags and data layout.
+8. Never delete or overwrite your populated `Data` when updating. Use the supplied safe data-layout/upgrade guide and test Windows profile portability before linking profiles shared with an installed browser.
+
+### Package versioning and immutable identity
+
+- Stable and prerelease releases use **distinct** release tags, ZIP names and installer revisions, avoiding collisions even if both identify Ardia version `0.2.47`.
+- Stable `0.2.47` uses PortableApps `PackageVersion=0.2.47.9999` (the `.9999` suffix is an **installer ordering marker only**). The real upstream version remains `DisplayVersion=0.2.47` and in `build-identity.json`.
+- Pre-release `0.2.47-nightly.7` uses `PackageVersion=0.2.47.7`, `DisplayVersion=0.2.47-nightly.7`. A Windows alpha classified by GitHub as a prerelease might still report **application version `0.2.47`**; this is correctly recorded as `release_channel=prerelease` and uses the lower `PackageVersion=0.2.47.9998` (the true stable uses `.9999`) even though the version has no `nightly` suffix.
+- The shared Package Builder remains `vhick/Portable-Package-Builder@v1.0.0`, `custom-nsis` (not the official PortableApps.com Installer); the publisher remains `vhick/portable-release-publisher@v1.1.1` (dry-run first; then publish), with `keep-releases=3` and `prune=false`.
+- The packaging-only workflow keeps the original release channel, profile layout and compiled flags of its verified source ZIP. It does **not** convert a prerelease ZIP to Stable.
+
+### Verification caveat
+
+**63 offline Python tests passed** for b1r9, including stable/prerelease classification, numeric sorting, missing-stable-asset refusal, strict official asset URL, source-tag identity, staging fixtures, PAF metadata, profile preservation, and regressions. Workflow YAML parsed, and the builder ZIP was verified. This is **not** a live Windows build or a successful official Stable Windows download. Real Stable Windows source assets, executable behavior, installer execution, browser persistence, OS-managed traces, profile sharing, and Windows notifications require separate Windows verification. See `docs/VALIDATION-b1r9.md`.
+
+## Existing b1r8-and-earlier feature documentation (retained)
+
 # Ardia Windows Pre-release PortableApps Builder Kit b1r8
 
 ## Data folder structure workflow checkbox (introduced in b1r7, retained in b1r8)

@@ -34,7 +34,7 @@ class DataLayoutChoiceTests(unittest.TestCase):
         self.assertLess(wf.index('scripts/data_layout.py'), wf.index('scripts/build-launcher.ps1'))
         self.assertIn(' --data-layout work/data-layout.json', wf)
         self.assertIn('_d$($env:PKG_LAYOUT_ID).zip', wf)
-        self.assertIn('b1r8-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
+        self.assertIn('b1r9-${{ env.PKG_CHANNEL }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
         self.assertIn('-Layout $env:PKG_LAYOUT_NAME', wf)
         packaging = (ROOT / '.github/workflows/package-only.yml').read_text(encoding='utf-8')
         self.assertNotIn('windows_style_data_folders', packaging)
@@ -71,7 +71,9 @@ class DataLayoutChoiceTests(unittest.TestCase):
         layout = data_layout.manifest_for(mirror)
         identity = tmp / 'identity.json'
         identity.write_text(json.dumps({
-            'arch': 'x64', 'version': '0.2.47-nightly.7', 'package_revision': 'b1r8',
+            'arch': 'x64', 'version': '0.2.47-nightly.7', 'package_revision': 'b1r9',
+            'release_channel': 'prerelease', 'release_tag': 'windows-alpha',
+            'github_release_is_prerelease': True, 'asset_id': 900001,
             'portable_data_layout': layout['layout'], 'data_layout': layout,
             'data_layout_fingerprint': layout['fingerprint'],
             'launcher_options': opts, 'launcher_flags_fingerprint': opts['fingerprint'],
@@ -110,7 +112,7 @@ class DataLayoutChoiceTests(unittest.TestCase):
     def test_selected_layouts_produce_different_release_tags(self):
         fake_commit = 'abcdef1234567890abcdef1234567890abcdef12'
         upstream = {'body': 'Ardia 0.2.47-nightly.7 for Windows, build 7661 (commit `abcdef1`)',
-                    'draft': False, 'prerelease': True,
+                    'draft': False, 'prerelease': True, 'tag_name': 'windows-alpha',
                     'assets': [{'name': 'Ardia-Setup-x64.exe', 'size': 32000000,
                                 'browser_download_url': 'https://github.com/ardia-browser/ardia/releases/download/windows-alpha/Ardia-Setup-x64.exe',
                                 'id': 123456}]}
