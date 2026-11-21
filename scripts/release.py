@@ -25,7 +25,7 @@ import data_layout
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (verified GitHub Windows release packaging)'
-REVISION = 'b1r9'
+REVISION = 'b1r10'
 
 
 def die(s):
@@ -95,6 +95,35 @@ def normalise_requested_version(value):
     if not WINDOWS_VERSION_RE.fullmatch(value):
         die('Requested version must be an exact numeric version, e.g. 0.2.47 or 0.2.47-nightly.7')
     return value
+
+
+def normalise_sha256(value, label):
+    """Only a complete SHA-256 can be used as a build pin.
+
+    An empty string means automatic selection; never silently accept a partial
+    digest or assume the hash of an installed Ardia.exe is an installer hash.
+    """
+    raw = (value or '').strip().lower()
+    if raw.startswith('sha256:'):
+        raw = raw[7:]
+    if raw and not re.fullmatch(r'[a-f0-9]{64}', raw):
+        die(label + ' must be exactly 64 hexadecimal SHA-256 characters')
+    return raw
+
+
+def checked_asset_digest(asset):
+    raw = asset.get('digest') or ''
+    if not raw:
+        return ''
+    if not isinstance(raw, str) or not re.fullmatch(r'sha256:[a-fA-F0-9]{64}', raw):
+        die('Unexpected or unsupported GitHub release asset digest; refusing ambiguous checksum')
+    return raw[7:].lower()
+
+
+def source_fingerprint(asset, installer_hash, app_hash):
+    """Distinguish replaced assets on rolling tags without using version alone."""
+    value = 'h' + installer_hash[:16] if installer_hash else 'a' + str(asset['id'])
+    return value + ('-e' + app_hash[:12] if app_hash else '')
 
 
 def find_release_asset(data, arch, version, channel):
@@ -198,10 +227,25 @@ def resolve(args):
     if channel not in ('stable', 'prerelease'):
         die('Unsupported release channel (stable or prerelease)')
     requested = normalise_requested_version(args.version)
+    exact_tag = (getattr(args, 'release_tag', '') or '').strip()
+    expected_installer = normalise_sha256(getattr(args, 'expected_setup_sha256', ''),
+                                          'Expected upstream setup SHA-256')
+    expected_app = normalise_sha256(getattr(args, 'expected_app_sha256', ''),
+                                    'Expected Ardia.exe SHA-256')
+    asset_id = (getattr(args, 'expected_asset_id', '') or '').strip()
+    if asset_id and (not re.fullmatch(r'[1-9][0-9]{0,19}', asset_id)):
+        die('Expected GitHub asset ID must be a positive integer')
+
     if channel == 'stable':
         if requested and not STABLE_VERSION_RE.fullmatch(requested):
             die('Stable channel requires a numeric stable version, e.g. 0.2.47 (no nightly suffix)')
-        if requested:
+        if exact_tag:
+            if not re.fullmatch(r'v0\.\d+\.\d+', exact_tag):
+                die('For Stable, exact release tag must be v0.x.y')
+            if requested and exact_tag != 'v' + requested:
+                die('Exact release tag does not match Requested version')
+            data = japi('/releases/tags/' + exact_tag, token)
+        elif requested:
             data = japi('/releases/tags/v' + requested, token)
         else:
             data = latest_stable_windows_release(token, args.arch)
@@ -210,6 +254,8 @@ def resolve(args):
         tag = data.get('tag_name') or ''
         if not re.fullmatch(r'v0\.\d+\.\d+', tag):
             die('Stable GitHub release has no exact stable semantic-version tag')
+        if exact_tag and tag != exact_tag:
+            die('GitHub returned a different release tag from requested exact release')
         version = tag[1:]
         if requested and requested != version:
             die('Selected stable release does not match requested exact version')
@@ -218,24 +264,41 @@ def resolve(args):
     else:
         if requested and not WINDOWS_VERSION_RE.fullmatch(requested):
             die('Invalid requested Windows prerelease version')
-        data = japi('/releases/tags/windows-alpha', token)
-        if data.get('draft') or not data.get('prerelease') or data.get('tag_name') != 'windows-alpha':
-            die('Windows-alpha release is missing or not a published prerelease')
-        # Rolling windows-alpha notes sometimes report v0.2.47 without '-nightly'
-        # even though the release *itself* remains a GitHub prerelease.
-        match = re.search(
-            r'Ardia\s+(0\.\d+\.\d+(?:-nightly\.\d+)?)\s+for\s+Windows,\s*'
-            r'build\s+(\d+)\s*\(commit\s+`?([a-f0-9]{7,40})`?\)',
-            data.get('body') or '', re.I)
-        if not match:
-            die('Cannot attest source version/build/commit in Windows-alpha release body')
-        version, raw_build, expected_source_prefix = match.groups()
-        build = int(raw_build)
-        tag = 'windows-alpha'
+        tag = exact_tag or 'windows-alpha'
+        if tag != 'windows-alpha' and not re.fullmatch(r'v0\.\d+\.\d+-nightly\.\d+', tag):
+            die('Pre-release exact tag must be windows-alpha or v0.x.y-nightly.n')
+        data = japi('/releases/tags/' + tag, token)
+        if data.get('draft') or not data.get('prerelease') or data.get('tag_name') != tag:
+            die('Selected Windows release is missing or not an exact published prerelease')
+        if tag == 'windows-alpha':
+            # The rolling channel can report an ordinary-looking app version.
+            match = re.search(
+                r'Ardia\s+(0\.\d+\.\d+(?:-nightly\.\d+)?)\s+for\s+Windows,\s*'
+                r'build\s+(\d+)\s*\(commit\s+`?([a-f0-9]{7,40})`?\)',
+                data.get('body') or '', re.I)
+            if not match:
+                die('Cannot attest source version/build/commit in rolling Windows-alpha release body')
+            version, raw_build, expected_source_prefix = match.groups()
+            build = int(raw_build)
+        else:
+            # Named nightly GitHub releases may retain older Windows assets,
+            # unlike the rolling windows-alpha assets which are replaced.
+            version = tag[1:]
+            build = None  # Do not invent the internal Windows alpha build number.
+            expected_source_prefix = None
         if requested and requested != version:
-            die('Requested version is not current in the official rolling Windows alpha release: ' + version)
+            die('Requested version differs from exact prerelease Windows version: ' + version)
+
     arch = args.arch
     asset = find_release_asset(data, arch, version, channel)
+    if asset_id and asset['id'] != int(asset_id):
+        die('Selected GitHub asset ID differs from the requested exact asset ID')
+    github_digest = checked_asset_digest(asset)
+    if expected_installer and github_digest and expected_installer != github_digest:
+        die('Requested setup SHA-256 differs from official GitHub release asset digest')
+    pinned_hash = expected_installer or github_digest
+    source_id = source_fingerprint(asset, pinned_hash, expected_app)
+
     # Both channels use exact upstream source TAG identity (not main/master).
     commit = japi('/commits/v' + version, token)['sha']
     if not re.fullmatch(r'[a-f0-9]{40}', commit):
@@ -256,23 +319,30 @@ def resolve(args):
         'asset_name': asset['name'], 'asset_url': asset['browser_download_url'],
         'asset_id': asset['id'], 'asset_size': asset['size'],
         'asset_api_digest': asset.get('digest') or '',
+        'expected_setup_sha256': expected_installer,
+        'expected_app_sha256': expected_app,
+        'expected_asset_id': int(asset_id) if asset_id else None,
+        'exact_release_tag_input': exact_tag,
+        'source_fingerprint': source_id,
         'source_lock_git_blob_sha': lock_sha, 'package_revision': REVISION,
         'launcher_options': options, 'launcher_flags_fingerprint': options['fingerprint'],
         'data_layout': layout, 'data_layout_fingerprint': layout['fingerprint'],
         'builder_repository_commit': os.environ.get('GITHUB_SHA', 'local-unverified'),
         'release_tag_for_builder':
             'portable-ardia-' + channel + '-' + version + '-' + arch + '-' +
-            commit[:12] + '-' + REVISION + '-f' + options['fingerprint'] +
-            '-d' + layout['fingerprint'],
+            commit[:12] + '-' + REVISION + '-s' + source_id +
+            '-f' + options['fingerprint'] + '-d' + layout['fingerprint'],
         'portable_data_layout': layout['layout'],
         'source_method': 'Official developer GitHub ' + channel +
             ' Windows setup executable; copied from isolated hosted-runner installation',
         'source_binary_provenance_limit':
-            'The exact binary-to-commit compilation provenance has not been independently attested; installer is not an official portable release.',
+            'GitHub release classification does not independently attest the Windows binary channel or UI build; '
+            'the installer is not a source-built or official portable release.',
     }
     writejson(args.identity, actual)
     print('Resolved official Windows', channel, version, 'commit', commit, arch,
-          'from exact GitHub release', tag)
+          'from exact GitHub release', tag, 'asset', asset['id'], asset['name'],
+          'source fingerprint', source_id)
 
 
 def assert_new_builder_release(args):
@@ -297,12 +367,24 @@ def acquire(args):
     src = json.loads(Path(args.identity).read_text(encoding='utf-8'))
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
     path = Path(args.out); path.parent.mkdir(parents=True, exist_ok=True)
+    # A rolling-tag download URL can be replaced between resolution and fetch.
+    # Recheck the immutable official GitHub asset ID/metadata immediately before
+    # download; never silently switch to the replacement asset.
+    if src.get('expected_asset_id'):
+        current = japi('/releases/assets/' + str(src['asset_id']), token)
+        if (current.get('id') != src['asset_id'] or
+                current.get('name') != src['asset_name'] or
+                current.get('size') != src['asset_size'] or
+                checked_asset_digest(current) != checked_asset_digest({'digest':src['asset_api_digest']})):
+            die('Pinned GitHub release asset metadata changed or asset ID was replaced')
     fetch(src['asset_url'], path, token)
     if path.stat().st_size != src['asset_size']:
         die('Downloaded installer size differs from exact GitHub release asset metadata')
     digest = sha256(path)
+    if src.get('expected_setup_sha256') and src['expected_setup_sha256'] != digest:
+        die('Downloaded setup SHA-256 differs from REQUIRED workflow checksum; refusing extraction')
     if src['asset_api_digest']:
-        declared = src['asset_api_digest'].removeprefix('sha256:').lower()
+        declared = checked_asset_digest({'digest': src['asset_api_digest']})
         if declared != digest: die('Asset SHA256 differs from official release API digest')
         src['digest_attestation'] = 'GitHub release API digest matched'
     else:
@@ -349,6 +431,12 @@ def install_in_isolated_ci(args):
         die('Inno setup did not place expected full Ardia.exe and chrome.dll at requested target')
     if pe_machine(target / 'Ardia.exe') != {'x64': 0x8664, 'arm64': 0xAA64}[meta['arch']]:
         die('Wrong upstream Ardia.exe architecture')
+    actual_app_hash = sha256(target / 'Ardia.exe')
+    if meta.get('expected_app_sha256') and actual_app_hash != meta['expected_app_sha256']:
+        die('Extracted Ardia.exe SHA-256 differs from REQUIRED workflow checksum; refusing package')
+    meta['extracted_app_exe_sha256'] = actual_app_hash
+    writejson(args.identity, meta)
+    print('Verified extracted Ardia.exe SHA256', actual_app_hash)
     print('Upstream binary staged from official Inno installation under disposable GitHub runner.')
 
 
@@ -414,6 +502,10 @@ Start=ArdiaPortable.exe
 '''
     (info / 'appinfo.ini').write_text(appinfo, encoding='utf-8')
     meta['upstream_app_exe_sha256'] = sha256(app / 'Ardia.exe')
+    if meta.get('expected_app_sha256') and meta['upstream_app_exe_sha256'] != meta['expected_app_sha256']:
+        die('Staged Ardia.exe SHA-256 differs from REQUIRED workflow checksum')
+    if meta.get('extracted_app_exe_sha256') and meta['upstream_app_exe_sha256'] != meta['extracted_app_exe_sha256']:
+        die('Upstream Ardia.exe changed between extraction and stage')
     meta['launcher_sha256'] = sha256(root / 'ArdiaPortable.exe')
     launcher_opts = meta.get('launcher_options')
     if meta['package_revision'] == REVISION:
@@ -431,7 +523,7 @@ Start=ArdiaPortable.exe
     writejson(args.identity, meta)
     if launcher_opts:
         writejson(root / 'Other' / 'Source' / 'launcher-options.json', launcher_opts)
-    if meta['package_revision'] == REVISION:
+    if meta['package_revision'] in ('b1r7', 'b1r8', 'b1r9', REVISION):
         writejson(root / 'Other' / 'Source' / 'data-layout.json', meta['data_layout'])
     shutil.copy2(args.identity, root / 'Other' / 'Source' / 'build-identity.json')
     manual = Path(__file__).resolve().parents[1] / 'docs' / 'UPGRADE-AND-LINKS.md'
@@ -477,13 +569,13 @@ def validate(args):
         die('Unknown portable data layout in build identity')
     if layout == 'legacy-profile-v1':
         must = [x for x in must if not x.startswith('Data/')] + ['Data/Profile']
-    elif meta.get('package_revision') not in ('b1r6', 'b1r7', 'b1r8', REVISION):
+    elif meta.get('package_revision') not in ('b1r6', 'b1r7', 'b1r8', 'b1r9', REVISION):
         die('Unrecognized package revision for mirrored profile layout')
     for rel in must:
         if not (root / rel).exists(): die('Missing required staged path: ' + rel)
     if layout == 'windows-appdata-mirror-v2' and (root / 'Data' / 'Profile').exists():
         die('Mirrored ZIP unexpectedly includes legacy Data/Profile')
-    if meta.get('package_revision') in ('b1r7', 'b1r8', REVISION):
+    if meta.get('package_revision') in ('b1r7', 'b1r8', 'b1r9', REVISION):
         actual_options = launcher_options.validate_manifest(meta.get('launcher_options'))
         if meta.get('launcher_flags_fingerprint') != actual_options['fingerprint']:
             die('Launcher options identity hash mismatch')
@@ -524,6 +616,12 @@ def validate(args):
         in_package = json.loads((root / 'Other/Source/build-identity.json').read_text(encoding='utf-8'))
         if in_package.get('release_channel') != ch or in_package.get('asset_id') != meta.get('asset_id'):
             die('Staged release channel/official asset identity mismatch')
+        if in_package.get('source_fingerprint') != meta.get('source_fingerprint'):
+            die('Staged source binary fingerprint differs from build identity')
+        if meta.get('expected_setup_sha256') and meta.get('download_sha256') != meta['expected_setup_sha256']:
+            die('Pinned upstream setup checksum differs from downloaded setup')
+        if meta.get('expected_app_sha256') and meta.get('upstream_app_exe_sha256') != meta['expected_app_sha256']:
+            die('Pinned upstream Ardia.exe checksum differs from staged application')
     if any((root / 'App/Ardia').glob('unins*')): die('Installed-app uninstaller files leaked into package')
     exe_bytes = (root / 'ArdiaPortable.exe').read_bytes()
     if b'MZ' != exe_bytes[:2]: die('Root launcher is not compiled PE')
@@ -559,7 +657,7 @@ def makezip(args):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
-    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--channel', choices=['stable','prerelease'], default='prerelease'); r.add_argument('--version', default=''); r.add_argument('--launcher-options', required=True); r.add_argument('--data-layout', required=True)
+    r = sub.add_parser('resolve'); r.add_argument('--identity', required=True); r.add_argument('--arch', choices=['x64','arm64'], default='x64'); r.add_argument('--channel', choices=['stable','prerelease'], default='prerelease'); r.add_argument('--version', default=''); r.add_argument('--release-tag', default=''); r.add_argument('--expected-setup-sha256', default=''); r.add_argument('--expected-app-sha256', default=''); r.add_argument('--expected-asset-id', default=''); r.add_argument('--launcher-options', required=True); r.add_argument('--data-layout', required=True)
     a = sub.add_parser('acquire'); a.add_argument('--identity', required=True); a.add_argument('--out', required=True)
     i = sub.add_parser('install-ci'); i.add_argument('--identity', required=True); i.add_argument('--installer', required=True); i.add_argument('--out', required=True)
     s = sub.add_parser('stage'); s.add_argument('--identity', required=True); s.add_argument('--install', required=True); s.add_argument('--launcher', required=True); s.add_argument('--out', required=True)

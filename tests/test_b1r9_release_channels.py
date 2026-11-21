@@ -81,7 +81,7 @@ class ReleaseChannelTests(TestCase):
             self.assertEqual(meta['source_commit'], COMMIT)
             self.assertEqual(meta['asset_name'], 'Ardia-0.2.47-windows-x64-setup.exe')
             self.assertIn('portable-ardia-stable-0.2.47', meta['release_tag_for_builder'])
-            self.assertIn('b1r9', meta['release_tag_for_builder'])
+            self.assertIn('b1r10', meta['release_tag_for_builder'])
 
     def test_stable_latest_without_requested_version_uses_releases_latest(self):
         with TemporaryDirectory() as d:
@@ -176,7 +176,7 @@ class ReleaseChannelTests(TestCase):
                 (package / 'App/AppInfo' / png).write_bytes(b'png')
             appinfo = (package / 'App/AppInfo/appinfo.ini').read_text(encoding='utf-8')
             self.assertIn('PackageVersion=0.2.47.9999', appinfo)
-            self.assertIn('DisplayVersion=0.2.47 (b1r9)', appinfo)
+            self.assertIn('DisplayVersion=0.2.47 (b1r10)', appinfo)
             self.assertIn('Windows stable release', appinfo)
             self.assertTrue((package / 'Data/Local/Ardia/User Data').is_dir())
             self.assertTrue((package / 'Data/Roaming/Ardia').is_dir())
@@ -222,7 +222,7 @@ class ReleaseChannelTests(TestCase):
         self.assertIn('options: [prerelease, stable]', w)
         self.assertIn('--channel $env:RELEASE_CHANNEL', w)
         self.assertIn('PKG_CHANNEL=$($m.release_channel)', w)
-        self.assertIn('b1r9', w)
+        self.assertIn('b1r10', w)
         self.assertIn('windows_style_data_folders:', w)
         self.assertIn('disable_encryption_win:', w)
         self.assertIn('default: false', w)

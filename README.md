@@ -1,3 +1,63 @@
+# Ardia Stable / Pre-release PortableApps Builder b1r10 — exact Windows binary controls
+
+**November 21, 2026.** This revision retains all working b1r9 controls and adds optional exact upstream binary fingerprint checks. GitHub's **Stable** classification applies to the *GitHub release*, **not** necessarily to the bundled Windows engine. A stable-tagged release can still contain an Ardia executable whose About screen says `nightly` or `Windows alpha`. Verify actual bytes when the exact Windows build matters.
+
+## New Run workflow inputs (all optional and blank by default)
+
+| Input | Example | What it guarantees |
+|---|---|---|
+| `release_channel` | `prerelease` / `stable` | GitHub release classification; does **not** guarantee the Windows executable calls itself Stable |
+| `requested_version` | `0.2.47` | Version constraint; does **not** identify the exact installer |
+| `exact_release_tag` | `windows-alpha`, `v0.2.47`, or `v0.2.47-nightly.9` | Only that official tag; the selected tag must match channel and contain an official Windows installer |
+| `expected_asset_id` | Official numeric GitHub release asset ID | Exact asset record at resolution; changing/replacing the asset causes a mismatch |
+| `expected_setup_sha256` | 64 hex characters from the exact official Windows setup `.exe` | Cryptographic SHA-256 pin: verifies the downloaded installer **before** running it on the isolated hosted CI runner |
+| `expected_ardia_exe_sha256` | 64 hex characters from `Ardia.exe` | After verified extraction, rejects an executable whose bytes do not match the expected desktop `Ardia.exe` |
+
+Every input is optional: leaving the new fields **blank preserves b1r9 automatic selection**. For a strict build, fill `exact_release_tag` and **at least one exact SHA-256**, preferably the **setup hash**. The optional executable hash is useful for testing against an already installed Ardia copy; it does not fingerprint the browser's other DLLs/resources. You may supply hashes with or without the `sha256:` prefix. Checks are case-insensitive but require 64 hexadecimal characters.
+
+### How to obtain hashes on Windows
+
+1. To fingerprint the **official downloaded setup**, locate its `.exe` in Downloads. In File Explorer, right-click the file and choose **Copy as path**. Open PowerShell, then run:
+
+   ```powershell
+   Get-FileHash -Algorithm SHA256 -LiteralPath "C:\Users\YOU\Downloads\Ardia-Setup-x64.exe"
+   ```
+
+2. To fingerprint your **currently installed browser** (for example, the version showing `Ardia 0.2.47, Windows alpha 7929`), first open Task Manager, right-click the **Ardia.exe** process, and select **Open file location**. Copy the full path to `Ardia.exe` and run:
+
+   ```powershell
+   Get-FileHash -Algorithm SHA256 -LiteralPath "C:\path\to\installed\Ardia.exe"
+   ```
+
+3. **Do not put an `Ardia.exe` hash in the setup checksum field, or vice versa.** They are different files. A checksum mismatch fails the build intentionally; it does not mean the source file is corrupt. Never guess a checksum or use only the first eight characters.
+4. You can also inspect the official upstream GitHub Releases REST API for an asset's `id`, `name`, `size`, and `digest` (if published): [GitHub API release assets](https://docs.github.com/en/rest/releases/assets). Always use `ardia-browser/ardia` as the repository and the Windows architecture you intend to build.
+
+### Exact build example: Windows alpha 7929
+
+If installed Ardia reports `0.2.47` and `Windows alpha 7929`, choose a real GitHub release tag whose available asset you wish to test. Choose the release channel to match the actual GitHub `prerelease` classification. Paste the hash of the installed `Ardia.exe` into `expected_ardia_exe_sha256` and preferably the hash of the exact official setup into `expected_setup_sha256`. If the tagged setup contains a different executable (for example `0.2.47-nightly.9`, Windows alpha 7808), **the build must stop**. It cannot manufacture alpha 7929 or recover a replaced rolling asset without a still-available official source. The About-screen build number itself is not independently parsed/attested by this workflow, so avoid claiming the runner verified the string `7929`; it verifies the binary bytes.
+
+### Build identities, security, and compatibility
+
+- b1r10 records the GitHub release tag, release classification, asset ID and size, GitHub published digest, user-pinned hashes, downloaded setup hash, actual extracted/staged `Ardia.exe` hash, upstream source tag/commit, and launcher/data-layout options in `Other/Source/build-identity.json`.
+- The package ZIP name, release tag, and installer package revision include an asset fingerprint. If the official setup has a checksum, its first 16 digits are used as an **identifier** (the actual **full 64-digit digest is always verified**); otherwise the GitHub asset ID distinguishes releases. A separately pinned Ardia.exe hash adds an executable fingerprint. This prevents releases with different known Windows binaries from colliding under the same Ardia version.
+- Exact `v0.2.47-nightly.N` GitHub tags can be selected in the Pre-release channel **only when that release has an actual official Windows installer**. The rolling `windows-alpha` tag is still supported. If its asset is replaced, no checksum option can reconstruct an older missing binary.
+- All seven compiled launcher-argument checkboxes, the Windows-style Local/Roaming versus legacy Profile checkbox, the working `windows-2022` MSVC toolchain, `vhick/Portable-Package-Builder@v1.0.0`, and `vhick/portable-release-publisher@v1.1.1` are preserved. `--disable-encryption-win` remains **off** by default.
+- Existing `Data` is never automatically migrated. The default source method is still an official Windows installer extracted in isolated CI—not an upstream source-built browser or an official portable binary.
+- The packaging-only workflow validates the already packaged identity and cannot retroactively change or override its upstream source fingerprint.
+
+## Quick setup
+
+1. Extract this **builder kit ZIP** over your separate GitHub Desktop **builder repository root** (including `.github`). Do **not** extract it into an installed portable browser or overwrite its `Data`.
+2. Commit: `Pin exact Ardia Windows release binaries by SHA-256 (b1r10)`. Push origin.
+3. GitHub Actions → **Build Ardia Windows PortableApps (Stable or Pre-release)** → **Run workflow**.
+4. Select channel and architecture, optionally provide exact upstream tag/asset ID/hash fields. Keep the previous working data-layout and launcher flag checkboxes. For a test run, disable **Publish**.
+5. Review the **Resolve**, **Fetch official Windows setup**, and **Extract upstream binary** steps and GitHub run summary. Mismatches are intentional fail-closed safety checks.
+6. After successful publishing, open the released ZIP → `Other\Source\build-identity.json` to inspect full hashes and official source provenance. Back up profile `Data` before installing/upgrading anything.
+
+**Verification:** 81 offline tests passed on Linux after patching, plus workflow YAML parsing and ZIP structure verification. Windows compilation, actual pinned real upstream downloads, real Ardia About-screen build interpretation, and UI behavior remain **not yet verified for b1r10**. See `docs/VALIDATION-b1r10.md`.
+
+---
+
 # Ardia Windows Stable / Pre-release PortableApps Builder Kit b1r9
 
 ## New b1r9 option: release channel (Stable or Pre-release)
