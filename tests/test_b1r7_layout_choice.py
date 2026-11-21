@@ -34,7 +34,7 @@ class DataLayoutChoiceTests(unittest.TestCase):
         self.assertLess(wf.index('scripts/data_layout.py'), wf.index('scripts/build-launcher.ps1'))
         self.assertIn(' --data-layout work/data-layout.json', wf)
         self.assertIn('_d$($env:PKG_LAYOUT_ID).zip', wf)
-        self.assertIn('b1r10-${{ env.PKG_CHANNEL }}-s${{ env.PKG_SOURCE_ID }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
+        self.assertIn('b1r11-${{ env.PKG_CHANNEL }}-s${{ env.PKG_SOURCE_ID }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}', wf)
         self.assertIn('-Layout $env:PKG_LAYOUT_NAME', wf)
         packaging = (ROOT / '.github/workflows/package-only.yml').read_text(encoding='utf-8')
         self.assertNotIn('windows_style_data_folders', packaging)

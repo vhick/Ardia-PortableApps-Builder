@@ -25,7 +25,7 @@ on:
         type: string
         default: ''
       expected_setup_sha256:
-        description: 'Optional exact SHA-256 of downloaded Windows SETUP .exe (64 hex); fail if different'
+        description: 'SHA-256 of official setup.exe (64 hex); with blank version/tag, FIND matching official release in selected channel'
         type: string
         default: ''
       expected_ardia_exe_sha256:
@@ -129,6 +129,7 @@ jobs:
           $m = Get-Content -LiteralPath work/identity.json -Raw -Encoding UTF8 | ConvertFrom-Json
           "PKG_CHANNEL=$($m.release_channel)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "Selected upstream release: $($m.release_channel) | $($m.release_tag) | $($m.asset_name)" >> $env:GITHUB_STEP_SUMMARY
+          "Setup SHA lookup used: $($m.installer_sha_lookup_used)" >> $env:GITHUB_STEP_SUMMARY
           "PKG_VERSION=$($m.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_TAG=$($m.release_tag_for_builder)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_ARCH=$($m.arch)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -149,6 +150,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Official upstream release download failed' }
           $m = Get-Content -LiteralPath work/identity.json -Encoding UTF8 -Raw | ConvertFrom-Json
           "Downloaded upstream setup SHA-256: $($m.download_sha256)" >> $env:GITHUB_STEP_SUMMARY
+          if ($m.expected_setup_sha256 -and $m.download_sha256 -ne $m.expected_setup_sha256) { throw 'Pinned setup hash not applied' }
       - name: Extract upstream binary by silent installer on isolated hosted runner ONLY
         run: |
           python scripts/release.py install-ci --identity work/identity.json --installer work/Ardia-Setup.exe --out "$env:RUNNER_TEMP/Ardia-Portable-Extraction"
@@ -179,7 +181,7 @@ jobs:
           python scripts/release.py validate --identity work/identity.json --root work/ArdiaPortable
           if ($LASTEXITCODE -ne 0) { throw 'Static package validation failed' }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = "dist/ArdiaPortable_$($env:PKG_CHANNEL)_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r10_s$($env:PKG_SOURCE_ID)_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
+          $zip = "dist/ArdiaPortable_$($env:PKG_CHANNEL)_$($env:PKG_VERSION)_$($env:PKG_ARCH)_b1r11_s$($env:PKG_SOURCE_ID)_f$($env:PKG_OPTIONS_ID)_d$($env:PKG_LAYOUT_ID).zip"
           python scripts/release.py zip --root work/ArdiaPortable --out $zip
           if ($LASTEXITCODE -ne 0) { throw 'Independent ZIP CRC validation failed' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
@@ -192,7 +194,7 @@ jobs:
           output-dir: dist
           engine: custom-nsis
           running-exe: 'App\Ardia\Ardia.exe'
-          package-revision: b1r10-${{ env.PKG_CHANNEL }}-s${{ env.PKG_SOURCE_ID }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
+          package-revision: b1r11-${{ env.PKG_CHANNEL }}-s${{ env.PKG_SOURCE_ID }}-f${{ env.PKG_OPTIONS_ID }}-d${{ env.PKG_LAYOUT_ID }}
           timeout-seconds: '1200'
       - name: Independently inspect compiled installer and hashes
         run: |
@@ -212,7 +214,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r10 ${{ env.PKG_CHANNEL }} source-${{ env.PKG_SOURCE_ID }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r11 ${{ env.PKG_CHANNEL }} source-${{ env.PKG_SOURCE_ID }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'true'
@@ -224,7 +226,7 @@ jobs:
             dist/*.zip
             dist/*.paf.exe
           tag: ${{ env.PKG_TAG }}
-          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r10 ${{ env.PKG_CHANNEL }} source-${{ env.PKG_SOURCE_ID }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
+          release-title: Ardia ${{ env.PKG_VERSION }} Windows ${{ env.PKG_ARCH }} PortableApps b1r11 ${{ env.PKG_CHANNEL }} source-${{ env.PKG_SOURCE_ID }} flags-${{ env.PKG_OPTIONS_ID }} layout-${{ env.PKG_LAYOUT_NAME }} (unofficial)
           keep-releases: '3'
           prune: 'false'
           dry-run: 'false'

@@ -1,3 +1,38 @@
+# Ardia Stable / Pre-release PortableApps Builder b1r11 — locate the exact Windows setup by SHA-256
+
+**21 November 2026.** b1r10 enforced a setup SHA after selecting a release; **it did not locate the release by hash**. b1r11 adds an evidence-based GitHub release *lookup* when `expected_setup_sha256` is supplied with **both** `requested_version` and `exact_release_tag` **left blank**. Official Windows setup assets in the selected release channel are searched by their published GitHub SHA-256 digests. Each candidate's release class, architecture, asset name, and URL is checked by the existing resolver. The downloaded bytes are independently hashed again **before** isolated extraction. The extracted `Ardia.exe` must separately match `expected_ardia_exe_sha256` if supplied. An installed EXE's hash alone cannot locate a matching setup; it acts as an essential *validation check*, not a search key.
+
+## Required Run workflow choices when trying to match a normal Windows installation
+
+1. **Release channel:** Choose `stable` if the desired **setup file** was attached to a non-prerelease GitHub release; choose `prerelease` if attached to a Windows-alpha or nightly release. This is GitHub release classification, not the About screen's application version.
+2. **Architecture:** `x64` for normal Intel/AMD PCs.
+3. **Requested version:** **Leave blank.** A version number pins a release and defeats cross-release SHA lookup.
+4. **Exact release tag:** **Leave blank.** `windows-alpha` or `v0.2.47` pins the release, so b1r11 validates against that tag instead of searching.
+5. **Expected setup SHA-256:** Paste SHA-256 of the **official downloaded Ardia Windows setup EXE** from which the installed build came. Do NOT paste a hash of a PortableApps-generated `.paf.exe` here.
+6. **Expected Ardia.exe SHA-256:** Paste SHA-256 of the normal installed app's *actual* `Ardia.exe`. This validates the extracted application, not the installer. Verify you chose the active installation path.
+7. **Expected asset ID:** Optional; leave blank unless you know the exact GitHub asset ID.
+8. **Publish:** Leave unchecked for the first diagnostic build. Preserve your currently working PortableApps `Data` folder.
+
+**Important:** If no official release in the selected channel has a published SHA-256 digest matching your setup, the workflow **fails safely**. It cannot recreate a replaced `windows-alpha` asset, recover an EXE from the original installation without an official matching setup, relabel a prerelease as stable, or guarantee the About screen text just from a GitHub tag. An official setup downloaded through Ardia's updater may no longer exist as an asset; this is a provenance limitation, not a reason to weaken checksum checks. If a digest is attached to two releases within one channel, the builder requires an exact tag to disambiguate them.
+
+## How to verify which Ardia.exe is actually running
+
+Close all Ardia windows, inspect the portable package you intend to test, and distinguish application/launcher versions:
+
+```powershell
+# Change these paths to YOUR actual locations.
+Get-FileHash -Algorithm SHA256 -LiteralPath 'D:\PortableApps\ArdiaPortable\App\Ardia\Ardia.exe'
+Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\Path\To\Installed\Ardia.exe'
+# Package source identity (available in a completed portable package):
+Get-Content -LiteralPath 'D:\PortableApps\ArdiaPortable\Other\Source\build-identity.json' -Raw
+```
+
+The two Ardia.exe hashes must be the **same** if they are the identical executable bytes. If different, the portable package is using a different application binary, regardless of version labels or `Data` contents. Compare `download_sha256`, `upstream_app_exe_sha256`, `release_tag`, `asset_id`, and `installer_sha_lookup_used` in the identity file. Open the **released package**, not an older portable folder, to avoid accidentally testing outdated `App` binaries. If hashes match but the About screen differs, investigate source version information in other bundled resources or possible existing-process/single-instance handoff; a matching EXE does **not** attest that every DLL/resource matches.
+
+The 7 browser flag checkboxes, 2 data-layout options, Windows 2022 compiler, separate packaging-only workflow, `vhick/Portable-Package-Builder@v1.0.0`, and `vhick/portable-release-publisher@v1.1.1` are preserved unchanged. This builder still extracts an official Windows installer on a disposable hosted runner rather than compiling the Chromium-based application from source. **Local tests do not prove the Windows 7929 build is available or that Ardia runs portably.** See `docs/VALIDATION-b1r11.md`.
+
+---
+
 # Ardia Stable / Pre-release PortableApps Builder b1r10 — exact Windows binary controls
 
 **November 21, 2026.** This revision retains all working b1r9 controls and adds optional exact upstream binary fingerprint checks. GitHub's **Stable** classification applies to the *GitHub release*, **not** necessarily to the bundled Windows engine. A stable-tagged release can still contain an Ardia executable whose About screen says `nightly` or `Windows alpha`. Verify actual bytes when the exact Windows build matters.

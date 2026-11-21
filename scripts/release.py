@@ -25,7 +25,7 @@ import data_layout
 REPO = 'ardia-browser/ardia'
 API = 'https://api.github.com/repos/' + REPO
 UA = 'ArdiaPortableBuilder/1.0 (verified GitHub Windows release packaging)'
-REVISION = 'b1r10'
+REVISION = 'b1r11'
 
 
 def die(s):
@@ -221,6 +221,67 @@ def latest_stable_windows_release(token, arch):
     return max(suitable, key=lambda item: tuple(int(v) for v in item['tag_name'][1:].split('.')))
 
 
+
+def find_official_release_by_setup_sha256(token, arch, channel, required_hash):
+    """Discover, rather than merely verify, an EXACT official setup by its API digest.
+
+    Restrict search to requested GitHub channel. Asset bytes are re-hashed later
+    in acquire(). Never pretend an installed Ardia.exe hash is an installer hash.
+    GitHub publishes digests for release assets; an absent digest is not a match.
+    """
+    suffix = 'x64' if arch == 'x64' else 'arm64'
+    matches = []
+    checked = 0
+    for page in range(1, 6):
+        group = japi(f'/releases?per_page=100&page={page}', token)
+        if not isinstance(group, list):
+            die('GitHub releases list did not return an array')
+        for item in group:
+            if item.get('draft') or bool(item.get('prerelease')) != (channel == 'prerelease'):
+                continue
+            tag = item.get('tag_name') or ''
+            if channel == 'stable':
+                if not re.fullmatch(r'v0\.\d+\.\d+', tag):
+                    continue
+                version = tag[1:]
+            else:
+                if tag == 'windows-alpha':
+                    version = None
+                elif re.fullmatch(r'v0\.\d+\.\d+-nightly\.\d+', tag):
+                    version = tag[1:]
+                else:
+                    continue
+            names = {f'Ardia-Setup-{suffix}.exe'}
+            if version:
+                names.add(f'Ardia-{version}-windows-{suffix}-setup.exe')
+            for asset in item.get('assets') or []:
+                if asset.get('name') not in names:
+                    continue
+                checked += 1
+                digest = checked_asset_digest(asset)
+                if digest and digest == required_hash:
+                    # Full URL, ID and archive structure are checked by the
+                    # normal find_release_asset() and acquire() methods.
+                    matches.append((item, asset))
+        if len(group) < 100:
+            break
+    else:
+        die('Exact binary search exceeded 500 releases; refusing incomplete lookup')
+    if not matches:
+        die(f'No matching official {channel} Windows {arch} setup SHA-256 among '
+            f'{checked} eligible assets. The exact installer may belong to the '
+            'other channel, may have been replaced, or may not be published '
+            'as a GitHub release asset. No older installer will be substituted.')
+    # Same digest can legitimately be attached to several release tags; that
+    # is not a unique source identity and must be resolved by a release tag.
+    if len(matches) > 1:
+        listing = ', '.join(sorted(item['tag_name'] for item, _ in matches))
+        die('Setup checksum matches multiple releases: ' + listing +
+            '. Supply exact_release_tag as well, and keep the SHA-256 pin.')
+    item, asset = matches[0]
+    return item
+
+
 def resolve(args):
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
     channel = getattr(args, 'channel', 'prerelease')
@@ -247,6 +308,8 @@ def resolve(args):
             data = japi('/releases/tags/' + exact_tag, token)
         elif requested:
             data = japi('/releases/tags/v' + requested, token)
+        elif expected_installer:
+            data = find_official_release_by_setup_sha256(token, args.arch, channel, expected_installer)
         else:
             data = latest_stable_windows_release(token, args.arch)
         if data.get('draft') or data.get('prerelease'):
@@ -264,10 +327,15 @@ def resolve(args):
     else:
         if requested and not WINDOWS_VERSION_RE.fullmatch(requested):
             die('Invalid requested Windows prerelease version')
-        tag = exact_tag or 'windows-alpha'
+        if not exact_tag and expected_installer:
+            matching_release = find_official_release_by_setup_sha256(token, args.arch, channel, expected_installer)
+            tag = matching_release['tag_name']
+        else:
+            matching_release = None
+            tag = exact_tag or 'windows-alpha'
         if tag != 'windows-alpha' and not re.fullmatch(r'v0\.\d+\.\d+-nightly\.\d+', tag):
             die('Pre-release exact tag must be windows-alpha or v0.x.y-nightly.n')
-        data = japi('/releases/tags/' + tag, token)
+        data = matching_release if matching_release is not None else japi('/releases/tags/' + tag, token)
         if data.get('draft') or not data.get('prerelease') or data.get('tag_name') != tag:
             die('Selected Windows release is missing or not an exact published prerelease')
         if tag == 'windows-alpha':
@@ -324,6 +392,7 @@ def resolve(args):
         'expected_asset_id': int(asset_id) if asset_id else None,
         'exact_release_tag_input': exact_tag,
         'source_fingerprint': source_id,
+        'installer_sha_lookup_used': bool(expected_installer and not exact_tag and not requested),
         'source_lock_git_blob_sha': lock_sha, 'package_revision': REVISION,
         'launcher_options': options, 'launcher_flags_fingerprint': options['fingerprint'],
         'data_layout': layout, 'data_layout_fingerprint': layout['fingerprint'],
